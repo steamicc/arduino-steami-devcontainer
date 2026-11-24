@@ -1,6 +1,6 @@
 # arduino-steami-devcontainer
 
-Image du Codespace pour programmer la carte [STeaMi](https://github.com/steamicc) en Arduino, sans rien installer : PlatformIO, la toolchain STM32 et les drivers [arduino-steami-lib](https://github.com/steamicc/arduino-steami-lib) sont dans l'image. Compiler ne demande aucun accès réseau.
+Image du Codespace pour programmer la carte [STeaMi](https://github.com/steamicc) en Arduino, sans rien installer : PlatformIO, la toolchain STM32 et les drivers sont dans l'image : le paquet Arduino [STeaMi](https://github.com/steamicc/arduino-steami), la même bibliothèque que celle de l'Arduino IDE. Compiler ne demande aucun accès réseau.
 
 L'image est publiée sur `ghcr.io/steamicc/arduino-steami-devcontainer`, avec un tag `AAAA.MM.N` (jamais de `latest`). Elle est conçue pour le dépôt modèle `steamicc/arduino-steami-starter`.
 
@@ -12,14 +12,14 @@ Les commandes disponibles dans le terminal :
 
 | Commande | Rôle |
 | --- | --- |
-| `steami-exemples [filtre]` | liste les exemples des drivers, sous la forme `driver/Exemple` |
-| `steami-compiler [driver/Exemple]` | compile votre programme (`src/`), ou un exemple tel quel |
-| `steami-copier driver/Exemple` | copie un exemple dans `src/` pour le modifier |
+| `steami-exemples [filtre]` | liste les exemples de la bibliothèque, sous la forme `COMPOSANT/Exemple` (les noms du menu Exemples de l'Arduino IDE) |
+| `steami-compiler [COMPOSANT/Exemple]` | compile votre programme (`src/`), ou un exemple tel quel |
+| `steami-copier COMPOSANT/Exemple` | copie un exemple dans `src/` pour le modifier |
 | `steami-televerser` | prépare l'envoi sur la carte : page « Téléverser » (Chrome ou Edge, avec console série) ou glisser-déposer de `.steami/firmware.bin` sur le lecteur STEAMI |
 | `steami-sauver ["message"]` | sauvegarde le travail sur GitHub |
 | `steami-serveur start\|stop\|status` | gère le serveur de la page « Téléverser » (port 8080) |
 
-Exemples de référence : `lis2mdl/BasicReader` et `ble/BleBeacon` (ce dernier demande une V1a ou une V1b).
+Exemples de référence : `LIS2MDL/BasicReader` et `BLE/BleBeacon` (ce dernier demande une V1a ou une V1b). Les noms s'écrivent comme dans le menu Exemples de l'Arduino IDE, mais la casse n'a pas d'importance : `lis2mdl/basicreader` fonctionne aussi.
 
 En fin de séance, arrêtez le Codespace (indicateur « Codespaces » en bas à gauche, puis « Stop Current Codespace » ; sans activité, il s'arrête seul au bout de 30 minutes par défaut) : un Codespace allumé consomme le quota.
 
@@ -36,11 +36,11 @@ L'image installe aussi **Copilot Chat sans complétion automatique** : l'élève
 | `.devcontainer/smoke-test.sh` | test de fumée lancé dans l'image avant toute publication |
 | `exemples/devcontainer.json` | modèle de configuration pour le dépôt `arduino-steami-starter` |
 | `tests/` | tests des commandes (bats), du serveur (Python) et de la page (Node) |
-| `.github/workflows/` | `devcontainer.yml` (tests et build) et `devcontainer-publish.yml` (publication) |
+| `.github/workflows/` | `devcontainer.yml` (tests et build), `devcontainer-publish.yml` (publication) et `suivre-paquet.yml` (PR automatique quand le paquet STeaMi publie une release) |
 
 ## Contribuer
 
-Les tests, la construction locale, la publication d'une nouvelle image et la mise à jour des drivers sont décrits dans [CONTRIBUTING.md](CONTRIBUTING.md).
+Les tests, la construction locale, la publication d'une nouvelle image et la mise à jour du paquet des drivers sont décrits dans [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
