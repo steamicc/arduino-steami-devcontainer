@@ -21,7 +21,7 @@ Les commandes disponibles dans le terminal :
 
 Exemples de référence : `lis2mdl/BasicReader` et `ble/BleBeacon` (ce dernier demande une V1a ou une V1b).
 
-En fin de séance, arrêtez le Codespace (menu Codespaces, puis « Stop codespace ») : un Codespace allumé consomme le quota.
+En fin de séance, arrêtez le Codespace (indicateur « Codespaces » en bas à gauche, puis « Stop Current Codespace » ; sans activité, il s'arrête seul au bout de 30 minutes par défaut) : un Codespace allumé consomme le quota.
 
 ## Contenu du dépôt
 

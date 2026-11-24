@@ -82,6 +82,8 @@ avec_origin() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Use this template"* ]]
   [[ "$output" == *"enregistré dans le Codespace"* ]]
+  [[ "$output" == *"fetch first"* ]]
+  [[ "$output" == *"git pull"* ]]
   [ "$(git log -1 --format=%s)" = refus ]
 }
 

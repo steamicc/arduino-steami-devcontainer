@@ -52,7 +52,8 @@ fi
 
 echec_push="Le push a échoué : votre travail est enregistré dans le Codespace, pas sur GitHub.
   Si ce Codespace est ouvert sur steamicc/arduino-steami-starter, créez d'abord votre propre
-  dépôt avec « Use this template » → « Create a new repository » (voir le wiki)."
+  dépôt avec « Use this template » → « Create a new repository » (voir le wiki).
+  Si git indique « rejected » ou « fetch first » : lancez git pull, puis relancez steami-sauver."
 if git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
     run git push || die "$echec_push"
 else
