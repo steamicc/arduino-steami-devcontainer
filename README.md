@@ -25,6 +25,8 @@ En fin de séance, arrêtez le Codespace (indicateur « Codespaces » en bas à 
 
 Le terminal est **zsh avec oh-my-zsh**. L'historique des commandes est conservé, même après l'arrêt du Codespace, dans `/workspaces/.zsh_history` (et `/workspaces/.bash_history` pour bash) : ce dossier est hors du dépôt, rien n'est commité. Le serveur SSH est présent : `gh codespace ssh` et `gh codespace logs` fonctionnent.
 
+L'image installe aussi **Copilot Chat sans complétion automatique** : l'élève écrit son code lui-même et Copilot ne répond que dans le chat, où il joue le rôle de tuteur cadré par les instructions du dépôt (`AGENTS.md`, `.github/copilot-instructions.md`).
+
 ## Contenu du dépôt
 
 | Chemin | Rôle |

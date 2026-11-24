@@ -14,13 +14,29 @@
   "remoteUser": "vscode",
   "customizations": {
     "vscode": {
+      "extensions": [
+        // Copilot Chat sert de tuteur ; ses réponses sont cadrées par
+        // AGENTS.md et .github/copilot-instructions.md du dépôt.
+        "GitHub.copilot-chat"
+      ],
       "settings": {
         "terminal.integrated.profiles.linux": {
           "zsh": {
             "path": "zsh"
           }
         },
-        "terminal.integrated.defaultProfile.linux": "zsh"
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        // Pas de complétion automatique par Copilot : l'élève écrit son code,
+        // Copilot ne répond que dans le chat.
+        "github.copilot.enable": {
+          "*": false
+        },
+        // Les features git (image de base) et sshd ajoutent chacune une
+        // consigne à Copilot ; celle de sshd lui fait conseiller de « set a
+        // password for your user ». Ce réglage, fusionné après les leurs, les
+        // retire. Les consignes de .github/copilot-instructions.md et
+        // d'AGENTS.md ne passent pas par lui.
+        "github.copilot.chat.codeGeneration.instructions": []
       }
     }
   },
