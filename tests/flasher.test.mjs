@@ -8,6 +8,7 @@ import {
   etatWebUSB,
   messageErreur,
   resumeProgramme,
+  texteEncart,
 } from '../.devcontainer/source/flasher/support.js';
 
 test('TamponLignes : ne renvoie que les lignes complètes', () => {
@@ -71,4 +72,15 @@ test('resumeProgramme', () => {
   const r = resumeProgramme({ programme: 'src', date: '2026-11-24T10:00:00Z', taille: 20480 });
   assert.match(r, /src/);
   assert.match(r, /20 Ko/);
+});
+
+test('texteEncart : le plan B passe par firmware.bin, jamais par steami-copier', () => {
+  for (const etat of ['iframe', 'absent']) {
+    const texte = texteEncart(etat);
+    assert.match(texte, /firmware\.bin/);
+    assert.match(texte, /lecteur STEAMI/);
+    assert.doesNotMatch(texte, /steami-copier/);
+  }
+  assert.match(texteEncart('iframe'), /Ports/);
+  assert.match(texteEncart('iframe'), /steami-televerser/);
 });

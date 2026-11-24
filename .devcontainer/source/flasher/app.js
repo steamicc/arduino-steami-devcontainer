@@ -1,6 +1,6 @@
 // Page « Téléverser » : relie le DOM à DAP.js (global DAPjs, vendor/dap.umd.js).
 import { TamponLignes } from './console.js';
-import { etatWebUSB, messageErreur, resumeProgramme } from './support.js';
+import { etatWebUSB, messageErreur, resumeProgramme, texteEncart } from './support.js';
 
 const $ = (id) => document.getElementById(id);
 const VENDOR_ID_DAPLINK = 0x0d28;
@@ -134,10 +134,12 @@ function afficherEncart() {
   if (etat === 'ok') return true;
   const encart = $('encart');
   encart.hidden = false;
-  encart.textContent =
-    etat === 'iframe'
-      ? "Cette page est affichée dans un aperçu, où l'USB est interdit. Ouvrez-la dans un onglet du navigateur (Chrome ou Edge), ou copiez le programme sur le lecteur de la carte avec steami-copier."
-      : "Ce navigateur ne sait pas parler à la carte en USB. Utilisez Chrome ou Edge, ou copiez le programme sur le lecteur de la carte (le disque qui apparaît quand elle est branchée) avec steami-copier.";
+  encart.textContent = texteEncart(etat) + ' ';
+  const lien = document.createElement('a');
+  lien.href = '/firmware.bin';
+  lien.download = 'firmware.bin';
+  lien.textContent = 'Télécharger firmware.bin';
+  encart.append(lien);
   usbPossible = false;
   majBoutons();
   return false;
