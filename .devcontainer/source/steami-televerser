@@ -30,6 +30,7 @@ cd "$racine"
 steami-serveur start
 
 port="${STEAMI_PORT:-8080}"
+secours_env_codespaces
 if [ -n "${CODESPACE_NAME:-}" ] && [ -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]; then
     adresse="https://${CODESPACE_NAME}-${port}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}/"
 else

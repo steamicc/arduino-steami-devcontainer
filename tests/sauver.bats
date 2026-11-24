@@ -94,3 +94,27 @@ avec_origin() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"git switch main"* ]]
 }
+
+@test "sauver_push_sans_identifiants" {
+  avec_origin
+  # Faux git : imite l'échec d'authentification d'une session SSH pour push.
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/git" <<'EOT'
+#!/bin/sh
+if [ "$1" = push ]; then
+  echo "fatal: could not read Username for 'https://github.com': No such device or address" >&2
+  exit 128
+fi
+exec /usr/bin/git "$@"
+EOT
+  chmod +x "$TMP/bin/git"
+  export PATH="$TMP/bin:$PATH"
+  echo '// modif' >> src/main.cpp
+  run steami-sauver "ssh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not read Username"* ]]
+  [[ "$output" == *"GitHub n'a pas pu vous identifier"* ]]
+  [[ "$output" == *"terminal de VS Code"* ]]
+  [[ "$output" != *"Use this template"* ]]
+  [ "$(git log -1 --format=%s)" = ssh ]
+}

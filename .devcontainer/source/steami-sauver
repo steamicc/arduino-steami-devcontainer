@@ -54,11 +54,25 @@ echec_push="Le push a échoué : votre travail est enregistré dans le Codespace
   Si ce Codespace est ouvert sur steamicc/arduino-steami-starter, créez d'abord votre propre
   dépôt avec « Use this template » → « Create a new repository » (voir le wiki).
   Si git indique « rejected » ou « fetch first » : lancez git pull, puis relancez steami-sauver."
+echec_auth="✗ GitHub n'a pas pu vous identifier : votre travail est enregistré dans le Codespace, pas sur GitHub.
+  Lancez steami-sauver depuis le terminal de VS Code du Codespace (une session SSH n'a pas vos
+  identifiants), puis réessayez."
+sortie_push=$(mktemp)
+trap 'rm -f "$sortie_push"' EXIT
 if git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
-    run git push || die "$echec_push"
+    commande_push=(git push)
 else
     # Branche sans amont : un git push nu échouerait (« has no upstream branch »).
-    run git push -u origin "$branche" || die "$echec_push"
+    commande_push=(git push -u origin "$branche")
+fi
+# La sortie de git reste visible pour l'élève et sert à reconnaître l'échec d'authentification.
+statut_push=0
+run "${commande_push[@]}" 2>&1 | tee "$sortie_push" || statut_push=${PIPESTATUS[0]}
+if [ "$statut_push" -ne 0 ]; then
+    if grep -qE 'could not read Username|Authentication failed|terminal prompts disabled|Invalid username or token' "$sortie_push"; then
+        die "$echec_auth"
+    fi
+    die "$echec_push"
 fi
 
 echo

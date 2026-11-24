@@ -43,3 +43,22 @@ dossier_exemple() {
     esac
     printf '%s\n' "$d"
 }
+
+# Complète CODESPACE_NAME et GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN depuis le
+# fichier .env de Codespaces quand elles sont absentes (session SSH). Le
+# fichier contient aussi GITHUB_TOKEN : il n'est jamais sourcé, seules ces deux
+# clés sont lues, et les variables déjà présentes gardent la priorité.
+secours_env_codespaces() {
+    local f="${STEAMI_CODESPACES_ENV:-/workspaces/.codespaces/shared/.env}" cle val
+    { [ -n "${CODESPACE_NAME:-}" ] && [ -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]; } && return 0
+    [ -r "$f" ] || return 0
+    while IFS='=' read -r cle val || [ -n "$cle" ]; do
+        case "$cle" in CODESPACE_NAME|GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN) ;; *) continue ;; esac
+        val=${val%$'\r'}
+        case "$val" in
+            \"*\"|\'*\') val=${val:1:${#val}-2} ;;
+        esac
+        [ -n "$val" ] && [ -z "${!cle:-}" ] && printf -v "$cle" '%s' "$val"
+    done < "$f"
+    return 0
+}
