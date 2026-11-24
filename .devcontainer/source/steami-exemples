@@ -9,9 +9,11 @@ usage() {
     cat <<'EOT'
 Usage : steami-exemples [filtre]
 
-Affiche les exemples disponibles, un par ligne, sous la forme driver/Exemple.
-Le filtre est une partie du nom du driver (par exemple : steami-exemples lis2mdl).
-Pour en compiler un : steami-compiler driver/Exemple.
+Affiche les exemples disponibles, un par ligne, sous la forme COMPOSANT/Exemple
+(les noms du menu Exemples de l'Arduino IDE).
+Le filtre est une partie du nom du composant, sans tenir compte de la casse
+(par exemple : steami-exemples lis2mdl).
+Pour en compiler un : steami-compiler COMPOSANT/Exemple.
 EOT
 }
 
@@ -21,13 +23,13 @@ esac
 [ "$#" -le 1 ] || die "Trop d'arguments. Usage : steami-exemples [filtre]"
 
 filtre="${1:-}"
+filtre_min="${filtre,,}"
 liste=$(
-    for d in "$STEAMI_LIB"/lib/*/examples/*/; do
+    for d in "$STEAMI_LIB"/examples/*/*/; do
         [ -d "$d" ] || continue
         d=${d%/}
-        ex="${d##*/}"; rest=${d%/examples/*}; driver="${rest##*/}"
-        case " $EXEMPLES_EXCLUS " in *" $driver/$ex "*) continue ;; esac
-        case "$driver" in *"$filtre"*) printf '%s/%s\n' "$driver" "$ex" ;; esac
+        ex="${d##*/}"; rest=${d%/*}; comp="${rest##*/}"
+        case "${comp,,}" in *"$filtre_min"*) printf '%s/%s\n' "$comp" "$ex" ;; esac
     done | LC_ALL=C sort
 )
 [ -n "$liste" ] || die "Aucun exemple pour « $filtre »."

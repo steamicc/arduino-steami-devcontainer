@@ -1,8 +1,8 @@
 👋 Bienvenue dans votre Codespace STeaMi, pour programmer la carte en Arduino.
 
-📚 steami-exemples liste les exemples des capteurs ; steami-exemples lis2mdl ne montre que ceux du driver lis2mdl.
-🔨 steami-compiler compile votre programme (le dossier src/) ; avec steami-compiler lis2mdl/BasicReader, il compile un exemple tel quel.
-📋 steami-copier lis2mdl/BasicReader copie un exemple dans src/ pour que vous le modifiiez.
+📚 steami-exemples liste les exemples de la bibliothèque STeaMi ; steami-exemples lis2mdl ne montre que ceux du composant LIS2MDL.
+🔨 steami-compiler compile votre programme (le dossier src/) ; avec steami-compiler LIS2MDL/BasicReader, il compile un exemple tel quel.
+📋 steami-copier LIS2MDL/BasicReader copie un exemple dans src/ pour que vous le modifiiez.
 🚀 steami-televerser prépare l'envoi du programme compilé vers la carte, au choix :
    - la page « Téléverser » (Chrome ou Edge), qui affiche aussi la console série ;
    - le glisser-déposer de .steami/firmware.bin sur le lecteur STEAMI.
