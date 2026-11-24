@@ -195,3 +195,14 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage : steami-compiler"* ]]
 }
+
+@test "segment_point_refuse" {
+  for ex in LIS2MDL/. ./BasicReader ./. LIS2MDL/./ ; do
+    run steami-compiler "$ex"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Exemple inconnu"* ]]
+  done
+  run steami-copier --remplacer LIS2MDL/.
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Exemple inconnu"* ]]
+}

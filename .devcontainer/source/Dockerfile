@@ -54,7 +54,8 @@ RUN git clone --depth 1 --branch "$STEAMI_PAQUET" \
     && grep -qx "version=${STEAMI_PAQUET#v}" /opt/steami/libs/STeaMi/library.properties
 
 # Définition de la carte : absente du paquet, copiée dans le dépôt de l'image
-# (identique à boards/steami.json d'arduino-steami-lib au même tag).
+# (copiée depuis boards/steami.json d'arduino-steami-lib v0.25.1 ; à comparer
+# avec le nouveau tag à chaque mise à jour du paquet, voir CONTRIBUTING.md).
 COPY --chown=vscode:vscode boards /opt/steami/boards
 
 # Bibliothèque tierce : STM32duinoBLE 1.5.0, que le paquet déclare (depends) et
