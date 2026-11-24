@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Faux pio pour les tests : note son environnement, écrit un faux binaire.
+echo "PLATFORMIO_SRC_DIR=${PLATFORMIO_SRC_DIR:-}" > "${PIO_STUB_LOG:-/dev/null}"
+echo "ARGS=$*" >> "${PIO_STUB_LOG:-/dev/null}"
+if [ "${PIO_STUB_ECHEC:-0}" = 1 ]; then
+  echo "pio: compilation en échec (faux)" >&2
+  exit 1
+fi
+mkdir -p .pio/build/steami
+printf 'binaire-%s\n' "$RANDOM" > .pio/build/steami/firmware.bin

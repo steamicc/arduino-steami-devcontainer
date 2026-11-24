@@ -30,6 +30,16 @@ cd "$TMP/projet" || exit 1
 pio run -e steami >"$TMP/base.log" 2>&1 || { tail -30 "$TMP/base.log" >&2; echec "compilation du projet d'amorçage"; }
 ok "projet d'amorçage compilé"
 
+steami-exemples lis2mdl | grep -qx lis2mdl/BasicReader \
+  || echec "steami-exemples lis2mdl devrait lister lis2mdl/BasicReader"
+ok "steami-exemples"
+
+steami-compiler lis2mdl/BasicReader >"$TMP/cmd.log" 2>&1 \
+  || { tail -30 "$TMP/cmd.log" >&2; echec "steami-compiler lis2mdl/BasicReader"; }
+[ -s .steami/firmware.bin ] && grep -q '"programme": "lis2mdl/BasicReader"' .steami/firmware.json \
+  || echec "steami-compiler n'a pas écrit .steami/firmware.bin et firmware.json"
+ok "steami-compiler lis2mdl/BasicReader"
+
 for ex in lis2mdl/BasicReader ble/BleBeacon; do
   dossier="$LIB/lib/${ex%%/*}/examples/${ex##*/}"
   PLATFORMIO_SRC_DIR="$dossier" pio run -e steami >"$TMP/ex.log" 2>&1 \
