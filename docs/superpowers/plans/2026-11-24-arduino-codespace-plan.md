@@ -304,7 +304,7 @@ lib_extra_dirs =
   - Boutons « Connecter la carte », « Téléverser » et « Effacer la console ». Téléverser est désactivé tant qu'il n'y a pas de carte ou pas de programme.
   - Une barre de progression et la console série.
   - **Lecture série** : `boucle = dap.startSerialRead(10).catch(err => { afficher(messageErreur(err)); etatNonConnectee(); })`. Ne jamais attendre cette promesse au démarrage.
-  - **Téléversement** : `dap.stopSerialRead(); await boucle;`, puis récupérer `/firmware.bin`. Si sa `byteLength` diffère de la `taille` affichée, rafraîchir le bandeau et demander de cliquer à nouveau. Sinon `await dap.flash(...)`, puis relancer la boucle.
+  - **Téléversement** : `dap.stopSerialRead(); await boucle;`, puis récupérer `/firmware.bin`. Si sa `byteLength` diffère de la `taille` affichée, rafraîchir le bandeau et demander de cliquer à nouveau. Sinon `await dap.flash(...)`, attendre 1 s, `await dap.reset()` (sans ce reset, la carte ne redémarre pas : constaté à la tâche 0), puis relancer la boucle.
   - Sur un `disconnect` USB, revenir à l'état « non connectée ».
   - Si `etatWebUSB` ne vaut pas `'ok'`, afficher un encart qui explique la copie sur le lecteur.
 - [ ] **Step 6 : vérifier sur la carte, avec l'utilisateur.** Lancer l'image locale avec `docker run -p 8080:8080 ...`, puis `steami-compiler` et `steami-serveur start`, et ouvrir la page dans Chrome.
