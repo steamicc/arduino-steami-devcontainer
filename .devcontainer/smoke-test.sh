@@ -41,11 +41,11 @@ ok "steami-exemples"
 
 steami-compiler lis2mdl/basicreader >"$TMP/cmd.log" 2>&1 \
   || { tail -30 "$TMP/cmd.log" >&2; echec "steami-compiler lis2mdl/basicreader"; }
-[ -s .steami/firmware.bin ] && grep -q '"programme": "LIS2MDL/BasicReader"' .steami/firmware.json \
+{ [ -s .steami/firmware.bin ] && grep -q '"programme": "LIS2MDL/BasicReader"' .steami/firmware.json; } \
   || echec "steami-compiler n'a pas écrit .steami/firmware.bin et firmware.json"
 ok "steami-compiler lis2mdl/basicreader (nom réel : LIS2MDL/BasicReader)"
 
-for ex in LIS2MDL/BasicReader LIS2MDL/DigitalCompass BLE/BleHotCold; do
+for ex in LIS2MDL/BasicReader LIS2MDL/DigitalCompass BLE/BleHotCold BLE/BleBeacon; do
   PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 \
     || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
   ok "$ex compilé"

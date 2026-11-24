@@ -45,11 +45,11 @@ Le résumé du job rappelle ces étapes et signale les configurations qui ne poi
 
 ## Mettre à jour le paquet des drivers
 
-Les drivers viennent du paquet Arduino « STeaMi » (`steamicc/arduino-steami`), le même que celui de l'Arduino IDE, cloné au tag fixé par `ARG STEAMI_PAQUET` dans `.devcontainer/source/Dockerfile` (seule source du tag : le smoke-test et le workflow le lisent). La définition de la carte n'est pas dans le paquet : elle est copiée dans `.devcontainer/source/boards/steami.json` (identique à `boards/steami.json` d'`arduino-steami-lib` au même tag).
+Les drivers viennent du paquet Arduino « STeaMi » (`steamicc/arduino-steami`), le même que celui de l'Arduino IDE, cloné au tag fixé par `ARG STEAMI_PAQUET` dans `.devcontainer/source/Dockerfile` (seule source du tag : le smoke-test et le workflow le lisent). La définition de la carte n'est pas dans le paquet : elle est copiée dans `.devcontainer/source/boards/steami.json` (copiée depuis `boards/steami.json` d'`arduino-steami-lib` v0.25.1 ; la mise à jour automatique ne change que l'`ARG`, donc elle n'est pas rafraîchie toute seule).
 
 **Mise à jour automatique.** Le workflow `suivre-paquet.yml` tourne une fois par jour (et à la demande, Actions, « Run workflow »). Quand `steamicc/arduino-steami` publie une release plus récente que l'`ARG`, il ouvre la PR « chore: paquet arduino-steami vX.Y.Z » sur la branche `chore/paquet-vX.Y.Z` (une seule fois par release : s'il existe déjà une branche ou une PR de ce nom, même fermée, il ne fait rien) et lance `devcontainer.yml` sur cette branche, car une PR créée avec `GITHUB_TOKEN` ne déclenche pas les workflows `pull_request`. Il reste à faire :
 
-1. attendre que `devcontainer.yml` soit au vert sur la branche, puis fusionner la PR ;
+1. attendre que `devcontainer.yml` soit au vert sur la branche, puis comparer `.devcontainer/source/boards/steami.json` avec celui d'`arduino-steami-lib` au nouveau tag (`gh api repos/steamicc/arduino-steami-lib/contents/boards/steami.json?ref=vX.Y.Z --jq .content | base64 -d | diff - .devcontainer/source/boards/steami.json`) et reporter les différences ; enfin fusionner la PR ;
 2. choisir la version `AAAA.MM.N` suivante, la mettre dans `.devcontainer/devcontainer.json` et `exemples/devcontainer.json`, puis publier l'image (section précédente) ;
 3. mettre à jour le modèle `steamicc/arduino-steami-starter` avec la nouvelle version de l'image.
 

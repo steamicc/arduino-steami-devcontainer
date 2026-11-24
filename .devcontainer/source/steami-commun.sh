@@ -35,7 +35,7 @@ racine_depot() {
 dossier_exemple() {
     local ex="$1" comp nom d
     local inconnu="Exemple inconnu : « $ex ». Voir la liste avec steami-exemples."
-    case "$ex" in */*/*|/*|*/|*..*) die "$inconnu" ;; esac
+    case "$ex" in */*/*|/*|*/|*..*|.|./*|*/.) die "$inconnu" ;; esac
     [ "${ex#*/}" != "$ex" ] || die "$inconnu"
     comp=$(trouver_nom "$STEAMI_LIB/examples" "${ex%%/*}" "$ex") || exit 1
     nom=$(trouver_nom "$STEAMI_LIB/examples/$comp" "${ex#*/}" "$ex") || exit 1

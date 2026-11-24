@@ -113,7 +113,7 @@ jobs:
           Cette PR change seulement \`ARG STEAMI_PAQUET\` dans \`.devcontainer/source/Dockerfile\`. Le smoke-test (devcontainer.yml) construit l'image et compile les exemples de référence sans réseau.
 
           La suite, à la main (CONTRIBUTING.md, « Mettre à jour le paquet des drivers ») :
-          1. une fois les vérifications au vert, fusionner cette PR ;
+          1. une fois les vérifications au vert, comparer \`.devcontainer/source/boards/steami.json\` avec celui d'arduino-steami-lib au nouveau tag et reporter les différences : \`gh api "repos/steamicc/arduino-steami-lib/contents/boards/steami.json?ref=<tag>" --jq .content | base64 -d | diff - .devcontainer/source/boards/steami.json\` ; puis fusionner cette PR ;
           2. mettre à jour la version de l'image (\`exemples/devcontainer.json\` et \`.devcontainer/devcontainer.json\`), puis taguer \`devcontainer-AAAA.MM.N\` ;
           3. mettre à jour le modèle \`arduino-steami-starter\` avec la nouvelle version de l'image.
           EOT
