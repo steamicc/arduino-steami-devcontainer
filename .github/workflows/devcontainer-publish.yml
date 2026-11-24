@@ -44,6 +44,13 @@ env:
   # En minuscules : ghcr.io refuse les majuscules dans un nom d'image.
   IMAGE: ghcr.io/steamicc/arduino-steami-devcontainer
 
+# Une seule publication à la fois : un push de tag et un workflow_dispatch pour
+# la même version passeraient tous deux la vérification « existe déjà », qui a
+# lieu une quinzaine de minutes avant le push, et le second écraserait le premier.
+concurrency:
+  group: devcontainer-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: build, smoke-test & publish
@@ -107,6 +114,10 @@ jobs:
           runCmd: .devcontainer/smoke-test.sh
           # L'image n'est poussée que si le smoke-test a réussi.
           push: always
+          # Garde l'uid 1000 de vscode, comme dans devcontainer.yml : sinon
+          # devcontainers/ci le remplace par celui du runner (1001), et
+          # /opt/steami et /opt/platformio (uid 1000) ne sont plus accessibles.
+          skipContainerUserIdUpdate: true
 
       - name: Résumé et suite à donner
         env:

@@ -47,12 +47,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Construit l'image
-        run: docker build -t steami-devcontainer:dev .devcontainer/source
+      # Même chemin que la publication (devcontainer-publish.yml) : devcontainers/ci
+      # construit l'image, la démarre et lance le smoke-test, mais ne pousse rien.
+      # Une erreur propre à ce chemin (uid de vscode, droits sur /opt) apparaît
+      # donc dans la PR et non au moment de publier.
+      - name: Construit l'image et lance le smoke-test (chemin de publication)
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
+        with:
+          configFile: .devcontainer/source/devcontainer.json
+          imageName: steami-devcontainer
+          imageTag: dev
+          runCmd: .devcontainer/smoke-test.sh
+          push: never
+          skipContainerUserIdUpdate: true
 
-      # Sans réseau : compiler ne doit rien télécharger. Utilisateur vscode,
+      # Même image, sans réseau : compiler ne doit rien télécharger. Utilisateur vscode,
       # comme dans le Codespace.
-      - name: Smoke-test dans le conteneur
+      - name: Smoke-test hors ligne dans le conteneur
         run: |
           docker run --rm --network none -u vscode \
             -v "$PWD":/work:ro -w /work \
