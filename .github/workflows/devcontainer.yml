@@ -13,6 +13,9 @@ on:
   push:
     branches:
       - main
+  # Pour la PR ouverte par suivre-paquet.yml : une PR créée avec GITHUB_TOKEN
+  # ne déclenche pas pull_request, le workflow est lancé à la main sur sa branche.
+  workflow_dispatch:
 
 permissions:
   contents: read
