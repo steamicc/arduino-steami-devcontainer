@@ -35,10 +35,10 @@ Toutes les versions sont exactes, jamais une plage : PlatformIO `6.1.19`, platef
 Une version publiée n'est jamais écrasée ni remplacée : les dépôts d'élèves déjà créés pointent dessus. Jamais de tag `latest`.
 
 1. Fusionner les changements sur `main`, `devcontainer.yml` au vert.
-2. Choisir la version `AAAA.MM.N` (`2026.11.1` est publiée et ne change plus ; la suivante est `2026.11.2`) et la mettre dans `.devcontainer/devcontainer.json` et `exemples/devcontainer.json`.
-3. Pousser le tag : `git tag devcontainer-2026.11.2 && git push origin devcontainer-2026.11.2`. Le workflow `devcontainer-publish` peut aussi être lancé à la main (Actions, « Run workflow ») une fois présent sur la branche par défaut.
+2. Choisir la version `AAAA.MM.N` (une version publiée ne change plus et ne se réutilise jamais : prendre la suivante) et la mettre dans `.devcontainer/devcontainer.json` et `exemples/devcontainer.json`.
+3. Pousser le tag : `git tag devcontainer-AAAA.MM.N && git push origin devcontainer-AAAA.MM.N`. Le workflow `devcontainer-publish` peut aussi être lancé à la main (Actions, « Run workflow ») une fois présent sur la branche par défaut.
 4. Vérifier que le job est vert, **y compris l'étape « Post Build, smoke-test & publish »** : c'est elle qui pousse l'image sur ghcr.io, seulement si le smoke-test a réussi.
-5. À la première publication seulement, rendre le paquet **public** (Packages, Package settings, Change visibility), faute de quoi les élèves ne peuvent pas le télécharger. Vérifier sans être connecté : `docker pull ghcr.io/steamicc/arduino-steami-devcontainer:2026.11.2`.
+5. À la première publication seulement, rendre le paquet **public** (Packages, Package settings, Change visibility), faute de quoi les élèves ne peuvent pas le télécharger. Vérifier sans être connecté : `docker pull ghcr.io/steamicc/arduino-steami-devcontainer:AAAA.MM.N`.
 6. Dans le dépôt modèle `steamicc/arduino-steami-starter`, mettre la nouvelle version dans `.devcontainer/devcontainer.json`. Les dépôts d'élèves déjà créés gardent l'ancienne.
 
 Le résumé du job rappelle ces étapes et signale les configurations qui ne pointent pas encore sur la nouvelle version.
