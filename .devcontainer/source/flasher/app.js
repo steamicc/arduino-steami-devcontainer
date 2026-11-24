@@ -11,21 +11,30 @@ let dap = null;
 let boucle = null; // promesse de startSerialRead, jamais attendue au démarrage
 let programme = null; // contenu de /firmware.json, ou null
 let occupe = false;
+let usbPossible = true; // false quand WebUSB est indisponible (encart affiché)
+let rendu = false; // un rafraîchissement de la console est déjà planifié
 
 function afficher(texte) {
   $('message').textContent = texte;
 }
 
-function ajouterConsole(texte) {
-  const console_ = $('console');
-  const colle = console_.scrollTop + console_.clientHeight >= console_.scrollHeight - 4;
-  console_.textContent += texte;
-  if (colle) console_.scrollTop = console_.scrollHeight;
+// Affiche le tampon (borné à 2000 lignes), au plus une fois par image.
+function planifierConsole() {
+  if (rendu) return;
+  rendu = true;
+  requestAnimationFrame(() => {
+    rendu = false;
+    const console_ = $('console');
+    const colle = console_.scrollTop + console_.clientHeight >= console_.scrollHeight - 4;
+    const lignes = tampon.lignes;
+    console_.textContent = lignes.length ? lignes.join('\n') + '\n' : '';
+    if (colle) console_.scrollTop = console_.scrollHeight;
+  });
 }
 
 function majBoutons() {
   $('televerser').disabled = !dap || !programme || occupe;
-  $('connecter').disabled = occupe;
+  $('connecter').disabled = occupe || !!dap || !usbPossible;
 }
 
 function etatNonConnectee() {
@@ -62,6 +71,7 @@ async function rafraichirBandeau() {
 }
 
 async function connecter() {
+  if (dap || occupe) return; // déjà connectée : une seule boucle série à la fois
   occupe = true;
   majBoutons();
   try {
@@ -72,7 +82,7 @@ async function connecter() {
     });
     nouvelle.on(DAPjs.DAPLink.EVENT_SERIAL_DATA, (donnees) => {
       const lignes = tampon.ajouter(donnees);
-      if (lignes.length) ajouterConsole(lignes.join('\n') + '\n');
+      if (lignes.length) planifierConsole();
     });
     await nouvelle.connect();
     await nouvelle.setSerialBaudrate(BAUDS);
@@ -128,7 +138,8 @@ function afficherEncart() {
     etat === 'iframe'
       ? "Cette page est affichée dans un aperçu, où l'USB est interdit. Ouvrez-la dans un onglet du navigateur (Chrome ou Edge), ou copiez le programme sur le lecteur de la carte avec steami-copier."
       : "Ce navigateur ne sait pas parler à la carte en USB. Utilisez Chrome ou Edge, ou copiez le programme sur le lecteur de la carte (le disque qui apparaît quand elle est branchée) avec steami-copier.";
-  $('connecter').disabled = true;
+  usbPossible = false;
+  majBoutons();
   return false;
 }
 
@@ -136,7 +147,7 @@ $('connecter').addEventListener('click', connecter);
 $('televerser').addEventListener('click', televerser);
 $('effacer').addEventListener('click', () => {
   tampon.vider();
-  $('console').textContent = '';
+  planifierConsole();
 });
 
 if (afficherEncart()) {
