@@ -56,3 +56,9 @@ RUN set -eu; \
 # <croquis>.ino.cpp dans le dossier de l'exemple, et git refuse un dépôt qui
 # appartient à un autre utilisateur.
 RUN chown -R vscode:vscode /opt/steami /opt/platformio
+
+# Commandes pour les élèves : steami-commun.sh (fonctions partagées) dans
+# /usr/local/lib/steami/, les commandes dans /usr/local/bin. Placé après les
+# couches lourdes pour que modifier une commande ne les reconstruise pas.
+COPY steami-commun.sh /usr/local/lib/steami/steami-commun.sh
+COPY steami-exemples steami-compiler steami-copier /usr/local/bin/

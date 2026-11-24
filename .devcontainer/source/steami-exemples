@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# steami-exemples : liste les exemples des drivers STeaMi.
+set -euo pipefail
+
+# shellcheck source=steami-commun.sh disable=SC1091
+source "$(dirname "$0")/steami-commun.sh" 2>/dev/null || source /usr/local/lib/steami/steami-commun.sh
+
+usage() {
+    cat <<'EOT'
+Usage : steami-exemples [filtre]
+
+Affiche les exemples disponibles, un par ligne, sous la forme driver/Exemple.
+Le filtre est une partie du nom du driver (par exemple : steami-exemples lis2mdl).
+Pour en compiler un : steami-compiler driver/Exemple.
+EOT
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+esac
+[ "$#" -le 1 ] || die "Trop d'arguments. Usage : steami-exemples [filtre]"
+
+filtre="${1:-}"
+liste=$(
+    for d in "$STEAMI_LIB"/lib/*/examples/*/; do
+        [ -d "$d" ] || continue
+        d=${d%/}
+        ex="${d##*/}"; rest=${d%/examples/*}; driver="${rest##*/}"
+        case "$driver" in *"$filtre"*) printf '%s/%s\n' "$driver" "$ex" ;; esac
+    done | LC_ALL=C sort
+)
+[ -n "$liste" ] || die "Aucun exemple pour « $filtre »."
+printf '%s\n' "$liste"
