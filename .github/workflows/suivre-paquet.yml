@@ -1,0 +1,124 @@
+# =====================================================================
+# suivre-paquet.yml : suit les releases du paquet Arduino « STeaMi »
+# (steamicc/arduino-steami), installé dans l'image au tag fixé par
+# `ARG STEAMI_PAQUET` du Dockerfile.
+#
+# Une fois par jour (et à la demande), le workflow lit la dernière release
+# du paquet. Si elle est plus récente que le tag de l'image et qu'aucune
+# branche ni PR `chore/paquet-<tag>` n'existe, il crée la branche, met à
+# jour l'ARG et ouvre la PR. La suite reste manuelle : fusionner, taguer
+# `devcontainer-AAAA.MM.N`, puis mettre à jour le modèle (CONTRIBUTING.md,
+# « Mettre à jour le paquet des drivers »).
+#
+# Une PR créée avec GITHUB_TOKEN ne déclenche pas les workflows
+# `pull_request` : après l'ouverture, on lance devcontainer.yml à la main
+# sur la branche (workflow_dispatch).
+#
+# Prérequis : l'organisation doit autoriser « Allow GitHub Actions to create
+# and approve pull requests » (Settings > Actions > General), sinon
+# l'ouverture de la PR échoue.
+#
+# Neutralisé dans les forks, comme les autres workflows.
+# =====================================================================
+name: suivre-paquet
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+# Une seule exécution à la fois : deux lancements simultanés créeraient la même branche.
+concurrency:
+  group: suivre-paquet
+  cancel-in-progress: false
+
+jobs:
+  suivre:
+    name: nouvelle release du paquet ?
+    # Ne pas tourner dans les forks.
+    if: github.repository == 'steamicc/arduino-steami-devcontainer'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Compare la dernière release au tag de l'image
+        id: comparaison
+        run: |
+          set -euo pipefail
+          actuel=$(sed -n 's/^ARG STEAMI_PAQUET=//p' .devcontainer/source/Dockerfile)
+          derniere=$(gh api repos/steamicc/arduino-steami/releases/latest --jq .tag_name)
+          for t in "$actuel" "$derniere"; do
+            if ! printf '%s' "$t" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::Tag « $t » invalide : le format attendu est vX.Y.Z"
+              exit 1
+            fi
+          done
+          echo "Tag de l'image : $actuel ; dernière release du paquet : $derniere"
+          plus_recente=$(printf '%s\n%s\n' "${actuel#v}" "${derniere#v}" | sort -V | tail -n1)
+          if [ "$actuel" = "$derniere" ] || [ "v$plus_recente" != "$derniere" ]; then
+            echo "L'image est à jour."
+            echo "nouvelle=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Branche ou PR (ouverte ou fermée) déjà là : on ne recommence pas.
+          branche="chore/paquet-$derniere"
+          if git ls-remote --exit-code --heads origin "$branche" >/dev/null 2>&1 \
+             || [ -n "$(gh pr list --state all --head "$branche" --json number --jq '.[].number')" ]; then
+            echo "$branche existe déjà : rien à faire."
+            echo "nouvelle=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "nouvelle=true"
+            echo "actuel=$actuel"
+            echo "derniere=$derniere"
+            echo "branche=$branche"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Crée la branche et met à jour l'ARG
+        if: steps.comparaison.outputs.nouvelle == 'true'
+        env:
+          ACTUEL: ${{ steps.comparaison.outputs.actuel }}
+          DERNIERE: ${{ steps.comparaison.outputs.derniere }}
+          BRANCHE: ${{ steps.comparaison.outputs.branche }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCHE"
+          sed -i "s/^ARG STEAMI_PAQUET=.*/ARG STEAMI_PAQUET=$DERNIERE/" .devcontainer/source/Dockerfile
+          grep -qx "ARG STEAMI_PAQUET=$DERNIERE" .devcontainer/source/Dockerfile
+          git commit -am "chore: paquet arduino-steami $DERNIERE"
+          git push origin "$BRANCHE"
+
+      - name: Ouvre la PR et lance les vérifications
+        if: steps.comparaison.outputs.nouvelle == 'true'
+        env:
+          ACTUEL: ${{ steps.comparaison.outputs.actuel }}
+          DERNIERE: ${{ steps.comparaison.outputs.derniere }}
+          BRANCHE: ${{ steps.comparaison.outputs.branche }}
+        run: |
+          set -euo pipefail
+          cat > corps.md <<EOT
+          Le paquet Arduino STeaMi a une nouvelle release : \`$DERNIERE\` (l'image utilise \`$ACTUEL\`).
+          https://github.com/steamicc/arduino-steami/releases/tag/$DERNIERE
+
+          Cette PR change seulement \`ARG STEAMI_PAQUET\` dans \`.devcontainer/source/Dockerfile\`. Le smoke-test (devcontainer.yml) construit l'image et compile les exemples de référence sans réseau.
+
+          La suite, à la main (CONTRIBUTING.md, « Mettre à jour le paquet des drivers ») :
+          1. une fois les vérifications au vert, fusionner cette PR ;
+          2. mettre à jour la version de l'image (\`exemples/devcontainer.json\` et \`.devcontainer/devcontainer.json\`), puis taguer \`devcontainer-AAAA.MM.N\` ;
+          3. mettre à jour le modèle \`arduino-steami-starter\` avec la nouvelle version de l'image.
+          EOT
+          gh pr create --base main --head "$BRANCHE" \
+            --title "chore: paquet arduino-steami $DERNIERE" \
+            --body-file corps.md
+          # La PR créée avec GITHUB_TOKEN ne déclenche pas pull_request.
+          gh workflow run devcontainer.yml --ref "$BRANCHE"
