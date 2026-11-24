@@ -1,0 +1,11 @@
+{
+  "name": "Arduino STeaMi (image)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "remoteUser": "vscode",
+  "hostRequirements": {
+    "cpus": 2
+  }
+}
