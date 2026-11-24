@@ -42,3 +42,21 @@ export function resumeProgramme(json) {
     : date.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' });
   return `Programme prêt : ${json.programme}, ${ko} Ko, compilé le ${quand}`;
 }
+
+// Texte de l'encart quand la page ne peut pas parler USB : etat vient de
+// etatWebUSB ('iframe' ou 'absent'). Le plan B est le glisser-déposer de
+// firmware.bin sur le lecteur STEAMI ; steami-copier ne touche jamais à la carte.
+const GLISSER =
+  "Clic droit sur .steami/firmware.bin dans l'explorateur du Codespace → Download, puis glissez le fichier sur le lecteur STEAMI (le disque qui apparaît quand la carte est branchée).";
+
+export function texteEncart(etat) {
+  if (etat === 'iframe') {
+    return (
+      "Cette page est affichée dans un aperçu, où l'USB est interdit. " +
+      "Ouvrez-la dans un onglet de Chrome ou Edge : onglet Ports, globe de la ligne « Téléverser » (ou l'adresse affichée par steami-televerser). " +
+      'Sinon : ' +
+      GLISSER
+    );
+  }
+  return 'Ce navigateur ne sait pas parler à la carte en USB. Utilisez Chrome ou Edge. Sinon : ' + GLISSER;
+}
