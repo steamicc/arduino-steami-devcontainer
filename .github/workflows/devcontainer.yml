@@ -1,0 +1,59 @@
+# =====================================================================
+# devcontainer.yml : vérifie à chaque PR et à chaque push que les
+# commandes steami-* passent leurs tests, que l'image se construit et que
+# le smoke-test réussit dans le conteneur, sans réseau.
+#
+# Rien n'est publié ici : la publication est dans devcontainer-publish.yml.
+# Neutralisé dans les forks : le build de l'image est long et inutile.
+# =====================================================================
+name: devcontainer
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests des commandes
+    # Ne pas tourner dans les forks.
+    if: github.repository == 'steamicc/arduino-steami-devcontainer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Installe bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bats
+
+      - name: Tests bats
+        run: bats tests/
+
+      - name: Tests du serveur (Python)
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Tests de la page Téléverser (Node)
+        run: node --test tests/*.test.mjs
+
+  image:
+    name: build & smoke-test
+    if: github.repository == 'steamicc/arduino-steami-devcontainer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Construit l'image
+        run: docker build -t steami-devcontainer:dev .devcontainer/source
+
+      # Sans réseau : compiler ne doit rien télécharger. Utilisateur vscode,
+      # comme dans le Codespace.
+      - name: Smoke-test dans le conteneur
+        run: |
+          docker run --rm --network none -u vscode \
+            -v "$PWD":/work:ro -w /work \
+            steami-devcontainer:dev .devcontainer/smoke-test.sh
