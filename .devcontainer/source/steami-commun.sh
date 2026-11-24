@@ -2,6 +2,11 @@
 
 STEAMI_LIB="${STEAMI_LIB:-/opt/steami/arduino-steami-lib}"
 
+# Exemples de la bibliothèque qui ne compilent pas avec le tag des drivers de
+# l'image (v0.24.0) : steami-exemples ne les liste pas. À vider quand un tag
+# les corrige (CONTRIBUTING.md, « Mettre à jour les drivers »).
+EXEMPLES_EXCLUS="${EXEMPLES_EXCLUS-lis2mdl/DigitalCompass ble/BleHotCold}"
+
 die() { printf '✗ %s\n' "$*" >&2; exit 1; }
 
 # Affiche la commande (avec des guillemets autour des arguments qui contiennent
@@ -30,8 +35,11 @@ racine_depot() {
 # Affiche le dossier d'un exemple « driver/Exemple », ou sort en erreur.
 dossier_exemple() {
     local ex="$1" d
-    case "$ex" in */*/*|/*|*..*) die "Exemple inconnu : « $ex ». Voir la liste avec steami-exemples." ;; esac
+    case "$ex" in */*/*|/*|*/|*..*) die "Exemple inconnu : « $ex ». Voir la liste avec steami-exemples." ;; esac
     d="$STEAMI_LIB/lib/${ex%%/*}/examples/${ex#*/}"
     [ "${ex#*/}" != "$ex" ] && [ -d "$d" ] || die "Exemple inconnu : « $ex ». Voir la liste avec steami-exemples."
+    case " $EXEMPLES_EXCLUS " in
+        *" $ex "*) echo "⚠ $ex ne compile pas avec les drivers de cette image : le résultat risque d'être une erreur de compilation." >&2 ;;
+    esac
     printf '%s\n' "$d"
 }

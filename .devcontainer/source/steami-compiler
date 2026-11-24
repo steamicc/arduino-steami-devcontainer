@@ -34,7 +34,8 @@ if [ "$#" -eq 1 ]; then
     export PLATFORMIO_SRC_DIR
 fi
 
-run pio run -e steami
+run pio run -e steami \
+    || die "La compilation a échoué : corrigez la première erreur ci-dessus (fichier:ligne). Le dernier firmware.bin n'a pas changé."
 
 mkdir -p .steami
 taille=$(stat -c %s .pio/build/steami/firmware.bin)

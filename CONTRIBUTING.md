@@ -47,10 +47,12 @@ Le résumé du job rappelle ces étapes et signale les configurations qui ne poi
 
 1. Dans `.devcontainer/source/Dockerfile`, changer le tag de `arduino-steami-lib` (`--branch vX.Y.Z` et la vérification `describe --tags`), et la même valeur dans `.devcontainer/smoke-test.sh`.
 2. Si la plateforme, le framework ou STM32duinoBLE changent, les mettre à jour dans `.devcontainer/source/amorcage/platformio.ini` et le Dockerfile, à l'exacte.
-3. Lancer les tests et le smoke-test en local, puis publier une nouvelle image (section précédente).
+3. Si le nouveau tag ajoute ou casse des exemples, compiler chaque exemple listé par `steami-exemples` dans l'image construite et mettre à jour `EXEMPLES_EXCLUS` (voir plus bas).
+4. Lancer les tests et le smoke-test en local, puis publier une nouvelle image (section précédente).
 
 **À rétablir quand un tag corrige les deux exemples.** `lis2mdl/DigitalCompass` et `ble/BleHotCold` ne compilent pas avec `v0.24.0` : le README, la documentation du wiki et le dépôt modèle ne doivent pas les citer tant que l'image utilise ce tag. Quand le tag des drivers les corrige :
 
+- vider `EXEMPLES_EXCLUS` dans `.devcontainer/source/steami-commun.sh` (la liste des exemples que `steami-exemples` masque, et pour lesquels `steami-compiler` et `steami-copier` avertissent) ;
 - vérifier que les deux se compilent avec `steami-compiler lis2mdl/DigitalCompass` et `steami-compiler ble/BleHotCold`, dans l'image construite ;
 - les ajouter au smoke-test ;
 - les rétablir dans la documentation (README, wiki, dépôt modèle).

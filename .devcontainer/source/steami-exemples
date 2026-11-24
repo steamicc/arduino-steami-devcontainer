@@ -26,6 +26,7 @@ liste=$(
         [ -d "$d" ] || continue
         d=${d%/}
         ex="${d##*/}"; rest=${d%/examples/*}; driver="${rest##*/}"
+        case " $EXEMPLES_EXCLUS " in *" $driver/$ex "*) continue ;; esac
         case "$driver" in *"$filtre"*) printf '%s/%s\n' "$driver" "$ex" ;; esac
     done | LC_ALL=C sort
 )

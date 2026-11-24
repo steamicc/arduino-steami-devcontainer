@@ -41,6 +41,56 @@ teardown() {
   [[ "$output" == *"Aucun exemple pour « zzz »"* ]]
 }
 
+@test "exemples_masque_les_exclus" {
+  mkdir -p "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass"
+  echo '// cassé' > "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass/DigitalCompass.ino"
+  run steami-exemples
+  [ "$status" -eq 0 ]
+  [ "$output" = $'hts221/dew_point\nlis2mdl/BasicReader' ]
+}
+
+@test "exemples_exclus_liste_vide" {
+  mkdir -p "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass"
+  echo '// ok' > "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass/DigitalCompass.ino"
+  EXEMPLES_EXCLUS="" run steami-exemples lis2mdl
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"lis2mdl/DigitalCompass"* ]]
+}
+
+@test "exemple_exclu_demande_quand_meme_avertit" {
+  mkdir -p "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass"
+  echo '// cassé' > "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass/DigitalCompass.ino"
+  run steami-compiler lis2mdl/DigitalCompass
+  [[ "$output" == *"ne compile pas"* ]]
+  run steami-copier lis2mdl/DigitalCompass
+  [[ "$output" == *"ne compile pas"* ]]
+}
+
+@test "exemple_sans_nom_refuse" {
+  run steami-compiler lis2mdl/
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Exemple inconnu"* ]]
+  run steami-copier --remplacer lis2mdl/
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Exemple inconnu"* ]]
+  [ -f src/main.cpp ]
+}
+
+@test "compiler_avec_son_message_en_francais" {
+  PIO_STUB_ECHEC=1 run steami-compiler
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"✗ La compilation a échoué"* ]]
+}
+
+@test "message_d_accueil_exact" {
+  n="$BATS_TEST_DIRNAME/../.devcontainer/source/first-run-notice.txt"
+  ! grep -q "envoie le programme" "$n"
+  grep -q "prépare l'envoi" "$n"
+  ! grep -q "n'en montre qu'un" "$n"
+  grep -q "Stop Current Codespace" "$n"
+  ! grep -q "Stop codespace" "$n"
+}
+
 @test "compiler_src" {
   run steami-compiler
   [ "$status" -eq 0 ]
