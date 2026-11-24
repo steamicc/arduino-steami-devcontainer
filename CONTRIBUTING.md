@@ -22,13 +22,13 @@ docker run --rm --network none -u vscode -v "$PWD":/work:ro -w /work \
   steami-devcontainer:dev .devcontainer/smoke-test.sh
 ```
 
-Le smoke-test vérifie PlatformIO 6.1.19, les drivers au tag `v0.24.0`, la compilation du projet d'amorçage et des exemples de référence (`lis2mdl/BasicReader`, `ble/BleBeacon`), le tout **sans réseau**, puis zsh comme shell de connexion et l'historique conservé dans `/workspaces` (simulé avec `STEAMI_WORKSPACES`). Le serveur SSH est une feature de `source/devcontainer.json` : seul l'outillage devcontainer (CI) l'applique, `docker build` et le smoke-test ne la voient pas. La première construction télécharge la plateforme, le framework et la toolchain, donc elle est longue. Les tests bats existent aussi dans l'image (`bats` y est installé).
+Le smoke-test vérifie PlatformIO 6.1.19, le paquet STeaMi au tag de l'`ARG STEAMI_PAQUET` du Dockerfile (tag et `version=` de `library.properties`), la compilation du projet d'amorçage et des exemples `LIS2MDL/BasicReader`, `LIS2MDL/DigitalCompass` et `BLE/BleHotCold`, et `steami-compiler lis2mdl/basicreader`, le tout **sans réseau**, puis zsh comme shell de connexion et l'historique conservé dans `/workspaces` (simulé avec `STEAMI_WORKSPACES`). Le serveur SSH est une feature de `source/devcontainer.json` : seul l'outillage devcontainer (CI) l'applique, `docker build` et le smoke-test ne la voient pas. La première construction télécharge la plateforme, le framework et la toolchain, donc elle est longue. Les tests bats existent aussi dans l'image (`bats` y est installé).
 
 Le workflow `devcontainer.yml` fait la même chose à chaque PR et à chaque push sur `main`. Il est désactivé dans les forks.
 
 ## Versions figées
 
-Toutes les versions sont exactes, jamais une plage : PlatformIO `6.1.19`, plateforme `ststm32@19.7.1`, framework `platformio/framework-arduinoststm32@4.21200.0`, STM32duinoBLE `1.5.0`, `arduino-steami-lib` au tag `v0.24.0`, DAP.js `2.3.0` (copie embarquée, sans CDN). Changer l'une d'elles, c'est publier une nouvelle image.
+Toutes les versions sont exactes, jamais une plage : PlatformIO `6.1.19`, plateforme `ststm32@19.7.1`, framework `platformio/framework-arduinoststm32@4.21200.0`, STM32duinoBLE `1.5.0`, le paquet Arduino STeaMi (`steamicc/arduino-steami`) au tag `ARG STEAMI_PAQUET` du Dockerfile, DAP.js `2.3.0` (copie embarquée, sans CDN). Changer l'une d'elles, c'est publier une nouvelle image.
 
 ## Publier une nouvelle image
 
@@ -43,16 +43,16 @@ Une version publiée n'est jamais écrasée ni remplacée : les dépôts d'élè
 
 Le résumé du job rappelle ces étapes et signale les configurations qui ne pointent pas encore sur la nouvelle version.
 
-## Mettre à jour les drivers
+## Mettre à jour le paquet des drivers
 
-1. Dans `.devcontainer/source/Dockerfile`, changer le tag de `arduino-steami-lib` (`--branch vX.Y.Z` et la vérification `describe --tags`), et la même valeur dans `.devcontainer/smoke-test.sh`.
-2. Si la plateforme, le framework ou STM32duinoBLE changent, les mettre à jour dans `.devcontainer/source/amorcage/platformio.ini` et le Dockerfile, à l'exacte.
-3. Si le nouveau tag ajoute ou casse des exemples, compiler chaque exemple listé par `steami-exemples` dans l'image construite et mettre à jour `EXEMPLES_EXCLUS` (voir plus bas).
-4. Lancer les tests et le smoke-test en local, puis publier une nouvelle image (section précédente).
+Les drivers viennent du paquet Arduino « STeaMi » (`steamicc/arduino-steami`), le même que celui de l'Arduino IDE, cloné au tag fixé par `ARG STEAMI_PAQUET` dans `.devcontainer/source/Dockerfile` (seule source du tag : le smoke-test et le workflow le lisent). La définition de la carte n'est pas dans le paquet : elle est copiée dans `.devcontainer/source/boards/steami.json` (identique à `boards/steami.json` d'`arduino-steami-lib` au même tag).
 
-**À rétablir quand un tag corrige les deux exemples.** `lis2mdl/DigitalCompass` et `ble/BleHotCold` ne compilent pas avec `v0.24.0` : le README, la documentation du wiki et le dépôt modèle ne doivent pas les citer tant que l'image utilise ce tag. Quand le tag des drivers les corrige :
+**Mise à jour automatique.** Le workflow `suivre-paquet.yml` tourne une fois par jour (et à la demande, Actions, « Run workflow »). Quand `steamicc/arduino-steami` publie une release plus récente que l'`ARG`, il ouvre la PR « chore: paquet arduino-steami vX.Y.Z » sur la branche `chore/paquet-vX.Y.Z` (une seule fois par release : s'il existe déjà une branche ou une PR de ce nom, même fermée, il ne fait rien) et lance `devcontainer.yml` sur cette branche, car une PR créée avec `GITHUB_TOKEN` ne déclenche pas les workflows `pull_request`. Il reste à faire :
 
-- vider `EXEMPLES_EXCLUS` dans `.devcontainer/source/steami-commun.sh` (la liste des exemples que `steami-exemples` masque, et pour lesquels `steami-compiler` et `steami-copier` avertissent) ;
-- vérifier que les deux se compilent avec `steami-compiler lis2mdl/DigitalCompass` et `steami-compiler ble/BleHotCold`, dans l'image construite ;
-- les ajouter au smoke-test ;
-- les rétablir dans la documentation (README, wiki, dépôt modèle).
+1. attendre que `devcontainer.yml` soit au vert sur la branche, puis fusionner la PR ;
+2. choisir la version `AAAA.MM.N` suivante, la mettre dans `.devcontainer/devcontainer.json` et `exemples/devcontainer.json`, puis publier l'image (section précédente) ;
+3. mettre à jour le modèle `steamicc/arduino-steami-starter` avec la nouvelle version de l'image.
+
+**Prérequis, à régler une fois.** L'organisation (ou le dépôt) doit autoriser « Allow GitHub Actions to create and approve pull requests » (Settings, Actions, General, Workflow permissions), sinon l'étape qui ouvre la PR échoue.
+
+**À la main.** Changer `ARG STEAMI_PAQUET=vX.Y.Z` dans le Dockerfile, puis, si le paquet change de plateforme, de framework ou de dépendance, mettre à jour `.devcontainer/source/amorcage/platformio.ini` et le Dockerfile, à l'exacte. Compiler chaque exemple listé par `steami-exemples` dans l'image construite, puis lancer les tests et le smoke-test en local avant de publier.
