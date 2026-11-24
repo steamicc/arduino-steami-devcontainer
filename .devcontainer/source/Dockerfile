@@ -57,6 +57,11 @@ RUN set -eu; \
 # appartient à un autre utilisateur.
 RUN chown -R vscode:vscode /opt/steami /opt/platformio
 
+# bats : lance les tests des commandes (tests/commandes.bats) dans l'image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bats \
+    && rm -rf /var/lib/apt/lists/*
+
 # Commandes pour les élèves : steami-commun.sh (fonctions partagées) dans
 # /usr/local/lib/steami/, les commandes dans /usr/local/bin. Placé après les
 # couches lourdes pour que modifier une commande ne les reconstruise pas.
