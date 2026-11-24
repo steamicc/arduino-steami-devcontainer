@@ -50,7 +50,27 @@ case "${1:-}" in
         rm -f "$pidfile"
         setsid nohup python3 "$(script_serveur)" >"${STEAMI_LOG:-/tmp/steami-serveur.log}" 2>&1 </dev/null &
         echo $! > "$pidfile"
-        echo "Serveur lancé (port ${STEAMI_PORT:-8080})."
+        # Attend que le serveur écoute vraiment (port pris, erreur Python...).
+        port="${STEAMI_PORT:-8080}"
+        pret=0
+        for _ in $(seq 50); do
+            tourne || break
+            if python3 - "$port" 2>/dev/null <<'PY'
+import sys, urllib.request, urllib.error
+try:
+    urllib.request.urlopen("http://127.0.0.1:%s/" % sys.argv[1], timeout=1)
+except urllib.error.HTTPError:
+    pass
+PY
+            then pret=1; break; fi
+            sleep 0.1
+        done
+        if [ "$pret" -ne 1 ]; then
+            kill "$(cat "$pidfile")" 2>/dev/null || true
+            rm -f "$pidfile"
+            die "Le serveur n'a pas démarré (port $port). Voir le journal : ${STEAMI_LOG:-/tmp/steami-serveur.log}"
+        fi
+        echo "Serveur lancé (port $port)."
         ;;
     stop)
         if tourne; then

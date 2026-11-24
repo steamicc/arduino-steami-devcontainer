@@ -83,3 +83,14 @@ attendre() {
   attendre firmware.json
   grep -q '"programme":"src"' "$TMP/reponse"
 }
+
+@test "start_port_pris" {
+  python3 -c 'import socket,time; s=socket.socket(); s.bind(("127.0.0.1",'"$PORT"')); s.listen(1); time.sleep(30)' &
+  FAUX_PID=$!
+  sleep 0.5
+  run steami-serveur start
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"n'a pas démarré"* ]]
+  [[ "$output" == *"$STEAMI_LOG"* ]]
+  [ ! -e "$STEAMI_PID" ]
+}
