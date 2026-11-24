@@ -22,7 +22,7 @@ docker run --rm --network none -u vscode -v "$PWD":/work:ro -w /work \
   steami-devcontainer:dev .devcontainer/smoke-test.sh
 ```
 
-Le smoke-test vérifie PlatformIO 6.1.19, les drivers au tag `v0.24.0`, la compilation du projet d'amorçage et des exemples de référence (`lis2mdl/BasicReader`, `ble/BleBeacon`), le tout **sans réseau**. La première construction télécharge la plateforme, le framework et la toolchain, donc elle est longue. Les tests bats existent aussi dans l'image (`bats` y est installé).
+Le smoke-test vérifie PlatformIO 6.1.19, les drivers au tag `v0.24.0`, la compilation du projet d'amorçage et des exemples de référence (`lis2mdl/BasicReader`, `ble/BleBeacon`), le tout **sans réseau**, puis zsh comme shell de connexion et l'historique conservé dans `/workspaces` (simulé avec `STEAMI_WORKSPACES`). Le serveur SSH est une feature de `source/devcontainer.json` : seul l'outillage devcontainer (CI) l'applique, `docker build` et le smoke-test ne la voient pas. La première construction télécharge la plateforme, le framework et la toolchain, donc elle est longue. Les tests bats existent aussi dans l'image (`bats` y est installé).
 
 Le workflow `devcontainer.yml` fait la même chose à chaque PR et à chaque push sur `main`. Il est désactivé dans les forks.
 
@@ -35,7 +35,7 @@ Toutes les versions sont exactes, jamais une plage : PlatformIO `6.1.19`, platef
 Une version publiée n'est jamais écrasée ni remplacée : les dépôts d'élèves déjà créés pointent dessus. Jamais de tag `latest`.
 
 1. Fusionner les changements sur `main`, `devcontainer.yml` au vert.
-2. Choisir la version `AAAA.MM.N` (par exemple `2026.11.2`) et la mettre dans `.devcontainer/devcontainer.json` et `exemples/devcontainer.json`.
+2. Choisir la version `AAAA.MM.N` (`2026.11.1` est publiée et ne change plus ; la suivante est `2026.11.2`) et la mettre dans `.devcontainer/devcontainer.json` et `exemples/devcontainer.json`.
 3. Pousser le tag : `git tag devcontainer-2026.11.2 && git push origin devcontainer-2026.11.2`. Le workflow `devcontainer-publish` peut aussi être lancé à la main (Actions, « Run workflow ») une fois présent sur la branche par défaut.
 4. Vérifier que le job est vert, **y compris l'étape « Post Build, smoke-test & publish »** : c'est elle qui pousse l'image sur ghcr.io, seulement si le smoke-test a réussi.
 5. À la première publication seulement, rendre le paquet **public** (Packages, Package settings, Change visibility), faute de quoi les élèves ne peuvent pas le télécharger. Vérifier sans être connecté : `docker pull ghcr.io/steamicc/arduino-steami-devcontainer:2026.11.2`.

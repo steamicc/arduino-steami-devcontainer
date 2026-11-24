@@ -4,7 +4,26 @@
     "dockerfile": "Dockerfile",
     "context": "."
   },
+  "features": {
+    // Serveur SSH pour `gh codespace ssh` et `gh codespace logs` : l'image de
+    // base n'en a pas. Il écoute sur le port 2222 du conteneur, qui n'est pas
+    // redirigé, et n'accepte que les clés installées par Codespaces : vscode n'a
+    // pas de mot de passe.
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
   "remoteUser": "vscode",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "zsh"
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
+    }
+  },
   "hostRequirements": {
     "cpus": 2
   }

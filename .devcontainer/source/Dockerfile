@@ -80,3 +80,13 @@ COPY --chown=vscode:vscode flasher /opt/steami/flasher
 
 # Message d'accueil du premier terminal : l'image de base le lit à cet endroit.
 COPY first-run-notice.txt /usr/local/etc/vscode-dev-containers/first-run-notice.txt
+
+# zsh (avec oh-my-zsh, déjà installé dans l'image de base) est le shell de
+# vscode. Historique conservé : steami-historique.sh est lu par zsh (zshenv, donc
+# avant oh-my-zsh) et par bash (bash.bashrc, lu aussi par les shells de connexion
+# via /etc/profile).
+COPY steami-historique.sh /usr/local/lib/steami/steami-historique.sh
+RUN set -eu; \
+    chsh -s /usr/bin/zsh vscode; \
+    printf '%s\n' '[ -r /usr/local/lib/steami/steami-historique.sh ] && . /usr/local/lib/steami/steami-historique.sh' \
+      | tee -a /etc/zsh/zshenv /etc/bash.bashrc >/dev/null

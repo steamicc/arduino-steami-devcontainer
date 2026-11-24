@@ -23,11 +23,13 @@ Exemples de référence : `lis2mdl/BasicReader` et `ble/BleBeacon` (ce dernier d
 
 En fin de séance, arrêtez le Codespace (indicateur « Codespaces » en bas à gauche, puis « Stop Current Codespace » ; sans activité, il s'arrête seul au bout de 30 minutes par défaut) : un Codespace allumé consomme le quota.
 
+Le terminal est **zsh avec oh-my-zsh**. L'historique des commandes est conservé, même après l'arrêt du Codespace, dans `/workspaces/.zsh_history` (et `/workspaces/.bash_history` pour bash) : ce dossier est hors du dépôt, rien n'est commité. Le serveur SSH est présent : `gh codespace ssh` et `gh codespace logs` fonctionnent.
+
 ## Contenu du dépôt
 
 | Chemin | Rôle |
 | --- | --- |
-| `.devcontainer/source/` | tout ce qui fabrique l'image : `Dockerfile`, commandes `steami-*`, serveur et page « Téléverser » (`flasher/`), projet d'amorçage, `devcontainer.json` de construction sur place |
+| `.devcontainer/source/` | tout ce qui fabrique l'image : `Dockerfile`, commandes `steami-*`, historique du shell (`steami-historique.sh`), serveur et page « Téléverser » (`flasher/`), projet d'amorçage, `devcontainer.json` de construction sur place |
 | `.devcontainer/devcontainer.json` | configuration distribuée de ce dépôt : elle télécharge l'image publiée |
 | `.devcontainer/smoke-test.sh` | test de fumée lancé dans l'image avant toute publication |
 | `exemples/devcontainer.json` | modèle de configuration pour le dépôt `arduino-steami-starter` |
