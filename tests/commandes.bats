@@ -94,6 +94,13 @@ teardown() {
   [ "$(ls src)" = BasicReader.ino ]
 }
 
+@test "copier_ignore_ino_cpp_genere" {
+  echo '// généré par PlatformIO' > "$STEAMI_LIB/lib/lis2mdl/examples/BasicReader/BasicReader.ino.cpp"
+  run steami-copier lis2mdl/BasicReader
+  [ "$status" -eq 0 ]
+  [ "$(ls src)" = BasicReader.ino ]
+}
+
 @test "copier_refuse_src_modifie" {
   echo '// modifié' >> src/main.cpp
   run steami-copier lis2mdl/BasicReader

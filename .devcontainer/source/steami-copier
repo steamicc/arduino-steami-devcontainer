@@ -44,5 +44,7 @@ fi
 
 rm -rf src
 mkdir src
-cp -r "$source_ex"/. src/
+# Sans les <croquis>.ino.cpp que PlatformIO laisse dans le dossier de l'exemple
+# après steami-compiler : avec le .ino, ils définiraient tout en double.
+tar -C "$source_ex" --exclude='*.ino.cpp' -cf - . | tar -C src -xf -
 echo "✅ $exemple copié dans src/"
