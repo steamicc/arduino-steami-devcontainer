@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Faux steami-serveur pour les tests : note ses arguments dans $STEAMI_STUB_LOG.
+echo "$*" >> "${STEAMI_STUB_LOG:?}"

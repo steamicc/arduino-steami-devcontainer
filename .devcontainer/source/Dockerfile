@@ -66,4 +66,5 @@ RUN apt-get update \
 # /usr/local/lib/steami/, les commandes dans /usr/local/bin. Placé après les
 # couches lourdes pour que modifier une commande ne les reconstruise pas.
 COPY steami-commun.sh /usr/local/lib/steami/steami-commun.sh
-COPY steami-exemples steami-compiler steami-copier steami-sauver /usr/local/bin/
+COPY steami_serveur.py /usr/local/lib/steami/steami_serveur.py
+COPY steami-exemples steami-compiler steami-copier steami-sauver steami-serveur steami-televerser /usr/local/bin/
