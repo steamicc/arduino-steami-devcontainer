@@ -12,6 +12,7 @@ let boucle = null; // promesse de startSerialRead, jamais attendue au démarrage
 let programme = null; // contenu de /firmware.json, ou null
 let occupe = false;
 let usbPossible = true; // false quand WebUSB est indisponible (encart affiché)
+let lienTelechargement = null; // lien firmware.bin de l'encart, masqué sans programme
 let rendu = false; // un rafraîchissement de la console est déjà planifié
 
 function afficher(texte) {
@@ -67,6 +68,7 @@ async function rafraichirBandeau() {
     programme = null;
   }
   $('bandeau').textContent = resumeProgramme(programme);
+  if (lienTelechargement) lienTelechargement.hidden = !programme;
   majBoutons();
 }
 
@@ -115,7 +117,10 @@ async function televerser() {
       return;
     }
     await dap.flash(donnees);
-    // Sans ce reset, la carte ne redémarre pas.
+    // La carte redémarre déjà d'elle-même : DAPLink réinitialise la cible à la
+    // fermeture du flux de flash. Le DAPLink de la STeaMi n'implémente pas
+    // DAP_ResetTarget (reset() ne fait rien pour l'instant), voir
+    // https://github.com/steamicc/DAPLink/issues/10 ; appel conservé pour plus tard.
     await new Promise((r) => setTimeout(r, 1000));
     await dap.reset();
     afficher('Programme téléversé.');
@@ -139,6 +144,8 @@ function afficherEncart() {
   lien.href = '/firmware.bin';
   lien.download = 'firmware.bin';
   lien.textContent = 'Télécharger firmware.bin';
+  lien.hidden = !programme; // affiché seulement quand un programme existe
+  lienTelechargement = lien;
   encart.append(lien);
   usbPossible = false;
   majBoutons();
