@@ -1,0 +1,17 @@
+{
+  "name": "STeaMi Arduino (dépôt de l'image)",
+  // Configuration DISTRIBUÉE de ce dépôt : celle que Codespaces prend par
+  // défaut. Elle ne construit rien : elle télécharge l'image fabriquée à
+  // partir de source/ et publiée par ce dépôt. Le modèle pour les dépôts
+  // d'élèves est exemples/devcontainer.json.
+  //
+  // Tag épinglé, jamais `latest` : un tag publié ne change plus de contenu.
+  // Pour en changer, voir « Publier une nouvelle image » dans CONTRIBUTING.md.
+  "image": "ghcr.io/steamicc/arduino-steami-devcontainer:2026.11.1",
+  // Répété ici et non seulement dans l'image : Codespaces choisit la machine
+  // avant de télécharger l'image.
+  "hostRequirements": { "cpus": 2 },
+  "forwardPorts": [8080],
+  "portsAttributes": { "8080": { "label": "Téléverser", "onAutoForward": "notify" } },
+  "postStartCommand": "steami-serveur start"
+}

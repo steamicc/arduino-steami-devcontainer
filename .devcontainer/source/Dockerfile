@@ -72,3 +72,6 @@ COPY steami-exemples steami-compiler steami-copier steami-sauver steami-serveur 
 # Page « Téléverser » (WebUSB + console série), servie par steami-serveur.
 # DAP.js 2.3.0 est embarqué dans flasher/vendor, sans CDN.
 COPY --chown=vscode:vscode flasher /opt/steami/flasher
+
+# Message d'accueil du premier terminal : l'image de base le lit à cet endroit.
+COPY first-run-notice.txt /usr/local/etc/vscode-dev-containers/first-run-notice.txt
