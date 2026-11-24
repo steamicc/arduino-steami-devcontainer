@@ -63,6 +63,15 @@ test('messageErreur : messages de Chrome', () => {
   );
 });
 
+test('messageErreur : carte débranchée pendant un transfert', () => {
+  const message = "Failed to execute 'controlTransferOut' on 'USBDevice': A transfer error has occurred.";
+  for (const name of ['Error', 'NetworkError']) {
+    const texte = messageErreur({ name, message });
+    assert.ok(texte.includes('débranchée'), texte);
+    assert.ok(!texte.includes('Failed to execute'), texte);
+  }
+});
+
 test('messageErreur : erreur inconnue', () => {
   assert.match(messageErreur({ name: 'Autre', message: 'quelque chose' }), /quelque chose/);
 });
