@@ -29,6 +29,11 @@ export function messageErreur(err) {
   if (nom === 'NetworkError' && /claim interface/i.test(message)) {
     return 'La carte est déjà utilisée par un autre onglet ou un autre programme : fermez-le puis réessayez.';
   }
+  if (
+    /transfer error|controlTransfer(In|Out)|transfer(In|Out)|device unavailable|disconnected/i.test(message)
+  ) {
+    return 'La carte a été débranchée ou elle est utilisée par un autre onglet : rebranchez-la, puis réessayez.';
+  }
   return message;
 }
 
