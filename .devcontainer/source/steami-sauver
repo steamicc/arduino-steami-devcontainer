@@ -54,7 +54,7 @@ echec_push="Le push a échoué : votre travail est enregistré dans le Codespace
   Si ce Codespace est ouvert sur steamicc/arduino-steami-starter, créez d'abord votre propre
   dépôt avec « Use this template » → « Create a new repository » (voir le wiki).
   Si git indique « rejected » ou « fetch first » : lancez git pull, puis relancez steami-sauver."
-echec_auth="✗ GitHub n'a pas pu vous identifier : votre travail est enregistré dans le Codespace, pas sur GitHub.
+echec_auth="GitHub n'a pas pu vous identifier : votre travail est enregistré dans le Codespace, pas sur GitHub.
   Lancez steami-sauver depuis le terminal de VS Code du Codespace (une session SSH n'a pas vos
   identifiants), puis réessayez."
 sortie_push=$(mktemp)
