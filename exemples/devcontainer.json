@@ -4,5 +4,10 @@
   "hostRequirements": { "cpus": 2 },
   "forwardPorts": [8080],
   "portsAttributes": { "8080": { "label": "Téléverser", "onAutoForward": "notify" } },
-  "postStartCommand": "steami-serveur start"
+  "postStartCommand": "steami-serveur start",
+  "customizations": {
+    "vscode": {
+      "settings": { "files.associations": { "*.ino": "cpp" } }
+    }
+  }
 }
