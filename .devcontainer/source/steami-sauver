@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# steami-sauver : enregistre le travail avec git et l'envoie sur GitHub.
+set -euo pipefail
+
+# shellcheck source=steami-commun.sh disable=SC1091
+source "$(dirname "$0")/steami-commun.sh" 2>/dev/null || source /usr/local/lib/steami/steami-commun.sh
+
+usage() {
+    cat <<'EOT'
+Usage : steami-sauver ["message du commit"]
+
+Sauvegarde votre travail sur GitHub, sur la branche courante.
+La commande fait, dans l'ordre, ce que vous pourriez taper vous-même :
+  1. git add -A                     prend toutes vos modifications
+  2. git commit -m "<message>"      les enregistre (message par défaut : « sauvegarde »)
+  3. git push                       les envoie sur GitHub
+Sur une nouvelle branche, pas encore envoyée sur GitHub, le push est
+« git push -u origin <branche> » : il crée la branche sur GitHub et la relie à la
+vôtre. Les sauvegardes suivantes font un simple git push.
+EOT
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+esac
+
+racine=$(git rev-parse --show-toplevel 2>/dev/null) || die "Lancez steami-sauver dans votre projet (un dépôt git)."
+cd "$racine"
+
+if [ -d "$(git rev-parse --git-path rebase-merge)" ] || [ -d "$(git rev-parse --git-path rebase-apply)" ]; then
+    die "Un rebase est en cours : git rebase --abort, puis relancez steami-sauver."
+fi
+branche=$(git symbolic-ref --short -q HEAD || true)
+[ -n "$branche" ] \
+    || die "Vous n'êtes sur aucune branche (HEAD détachée) : revenez sur une branche (git switch main), puis relancez steami-sauver."
+
+run git add -A
+if git diff --cached --quiet; then
+    echo "  (rien de nouveau à enregistrer depuis le dernier commit)"
+else
+    run git commit -m "${1:-sauvegarde}" || die "Commit impossible (message ci-dessus) : travail non sauvegardé."
+fi
+
+if ! git remote get-url origin >/dev/null 2>&1; then
+    {
+        echo "✗ Ce Codespace n'est lié à aucun dépôt GitHub : le travail est enregistré ici, pas envoyé."
+        echo "  Pour le publier : Contrôle de code source (barre de gauche) → « Publish Branch »,"
+        echo "  ou « Publish to a new repository » depuis github.com/codespaces."
+    } >&2
+    exit 1
+fi
+
+echec_push="Le push a échoué : votre travail est enregistré dans le Codespace, pas sur GitHub.
+  Si ce Codespace est ouvert sur steamicc/arduino-steami-starter, créez d'abord votre propre
+  dépôt avec « Use this template » → « Create a new repository » (voir le wiki)."
+if git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+    run git push || die "$echec_push"
+else
+    # Branche sans amont : un git push nu échouerait (« has no upstream branch »).
+    run git push -u origin "$branche" || die "$echec_push"
+fi
+
+echo
+echo "✅ Travail sauvegardé sur GitHub, branche $branche."
