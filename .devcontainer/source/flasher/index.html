@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Téléverser sur la STeaMi</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 1.5em auto; padding: 0 16px; line-height: 1.4; }
+  h1 { font-size: 1.5em; }
+  #bandeau { padding: .6em .8em; border-radius: 6px; background: rgba(128, 128, 128, .15); margin-bottom: 1em; }
+  #encart { padding: .6em .8em; border-radius: 6px; border: 2px solid #c60; margin-bottom: 1em; }
+  #encart[hidden] { display: none; }
+  button { font-size: 1em; margin: 0 .5em .5em 0; padding: .5em .9em; }
+  progress { width: 100%; height: 1.2em; }
+  #etat { font-weight: bold; margin: .5em 0; }
+  #message { min-height: 1.4em; }
+  #console { background: #111; color: #9f9; height: 320px; overflow: auto; padding: .5em; white-space: pre-wrap; word-break: break-all; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h1>Téléverser sur la STeaMi</h1>
+
+<div id="encart" hidden></div>
+
+<div id="bandeau">Chargement…</div>
+
+<div>
+  <button id="connecter" type="button">Connecter la carte</button>
+  <button id="televerser" type="button" disabled>Téléverser</button>
+  <button id="effacer" type="button">Effacer la console</button>
+</div>
+
+<div id="etat">Carte non connectée</div>
+<progress id="progression" max="1" value="0"></progress>
+<div id="message" role="status"></div>
+
+<h2>Console série</h2>
+<pre id="console" aria-live="off"></pre>
+
+<script src="vendor/dap.umd.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

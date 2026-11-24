@@ -68,3 +68,7 @@ RUN apt-get update \
 COPY steami-commun.sh /usr/local/lib/steami/steami-commun.sh
 COPY steami_serveur.py /usr/local/lib/steami/steami_serveur.py
 COPY steami-exemples steami-compiler steami-copier steami-sauver steami-serveur steami-televerser /usr/local/bin/
+
+# Page « Téléverser » (WebUSB + console série), servie par steami-serveur.
+# DAP.js 2.3.0 est embarqué dans flasher/vendor, sans CDN.
+COPY --chown=vscode:vscode flasher /opt/steami/flasher
