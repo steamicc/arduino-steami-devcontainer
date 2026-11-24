@@ -7,7 +7,7 @@ source "$(dirname "$0")/steami-commun.sh" 2>/dev/null || source /usr/local/lib/s
 
 usage() {
     cat <<'EOT'
-Usage : steami-copier [--remplacer] driver/Exemple
+Usage : steami-copier [--remplacer] COMPOSANT/Exemple
 
 Remplace le contenu de src/ par les fichiers de l'exemple (la liste :
 steami-exemples), pour que vous puissiez le modifier.
@@ -23,16 +23,18 @@ for a in "$@"; do
     case "$a" in
         -h|--help) usage; exit 0 ;;
         --remplacer) remplacer=1 ;;
-        -*) die "Option inconnue : $a. Usage : steami-copier [--remplacer] driver/Exemple" ;;
-        *) [ -z "$exemple" ] || die "Un seul exemple à la fois. Usage : steami-copier [--remplacer] driver/Exemple"
+        -*) die "Option inconnue : $a. Usage : steami-copier [--remplacer] COMPOSANT/Exemple" ;;
+        *) [ -z "$exemple" ] || die "Un seul exemple à la fois. Usage : steami-copier [--remplacer] COMPOSANT/Exemple"
            exemple="$a" ;;
     esac
 done
-[ -n "$exemple" ] || die "Indiquez l'exemple à copier. Usage : steami-copier [--remplacer] driver/Exemple (la liste : steami-exemples)"
+[ -n "$exemple" ] || die "Indiquez l'exemple à copier. Usage : steami-copier [--remplacer] COMPOSANT/Exemple (la liste : steami-exemples)"
 
 racine=$(racine_depot) || die "Lancez steami-copier dans votre projet (un dossier qui contient platformio.ini)."
 cd "$racine"
 source_ex=$(dossier_exemple "$exemple")
+# Le nom réel (COMPOSANT/Exemple), pas celui que la personne a tapé.
+exemple=$(basename "$(dirname "$source_ex")")/$(basename "$source_ex")
 
 if [ "$remplacer" -eq 0 ] && git rev-parse --git-dir >/dev/null 2>&1; then
     echo "→ git status --porcelain -- src"

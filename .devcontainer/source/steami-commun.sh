@@ -1,11 +1,6 @@
 # Fonctions communes aux commandes steami-* (à charger avec « source »).
 
-STEAMI_LIB="${STEAMI_LIB:-/opt/steami/arduino-steami-lib}"
-
-# Exemples de la bibliothèque qui ne compilent pas avec le tag des drivers de
-# l'image (v0.24.0) : steami-exemples ne les liste pas. À vider quand un tag
-# les corrige (CONTRIBUTING.md, « Mettre à jour les drivers »).
-EXEMPLES_EXCLUS="${EXEMPLES_EXCLUS-lis2mdl/DigitalCompass ble/BleHotCold}"
+STEAMI_LIB="${STEAMI_LIB:-/opt/steami/libs/STeaMi}"
 
 die() { printf '✗ %s\n' "$*" >&2; exit 1; }
 
@@ -32,16 +27,38 @@ racine_depot() {
     return 1
 }
 
-# Affiche le dossier d'un exemple « driver/Exemple », ou sort en erreur.
+# Affiche le dossier d'un exemple « COMPOSANT/Exemple » (les noms du menu
+# Exemples de l'Arduino IDE : LIS2MDL/BasicReader), ou sort en erreur. La casse
+# ne compte pas (lis2mdl/basicreader est accepté, pour l'ancienne documentation) ;
+# si plusieurs dossiers conviennent, la correspondance exacte gagne, sinon la
+# demande est ambiguë.
 dossier_exemple() {
-    local ex="$1" d
-    case "$ex" in */*/*|/*|*/|*..*) die "Exemple inconnu : « $ex ». Voir la liste avec steami-exemples." ;; esac
-    d="$STEAMI_LIB/lib/${ex%%/*}/examples/${ex#*/}"
-    [ "${ex#*/}" != "$ex" ] && [ -d "$d" ] || die "Exemple inconnu : « $ex ». Voir la liste avec steami-exemples."
-    case " $EXEMPLES_EXCLUS " in
-        *" $ex "*) echo "⚠ $ex ne compile pas avec les drivers de cette image : le résultat risque d'être une erreur de compilation." >&2 ;;
-    esac
+    local ex="$1" comp nom d
+    local inconnu="Exemple inconnu : « $ex ». Voir la liste avec steami-exemples."
+    case "$ex" in */*/*|/*|*/|*..*) die "$inconnu" ;; esac
+    [ "${ex#*/}" != "$ex" ] || die "$inconnu"
+    comp=$(trouver_nom "$STEAMI_LIB/examples" "${ex%%/*}" "$ex") || exit 1
+    nom=$(trouver_nom "$STEAMI_LIB/examples/$comp" "${ex#*/}" "$ex") || exit 1
+    d="$STEAMI_LIB/examples/$comp/$nom"
     printf '%s\n' "$d"
+}
+
+# Affiche le nom réel du sous-dossier de $1 qui correspond à $2 (exact, sinon
+# sans tenir compte de la casse). Sort en erreur s'il n'y en a aucun ou
+# plusieurs ($3 : la demande complète, pour les messages).
+trouver_nom() {
+    local parent="$1" voulu="$2" demande="$3" e n trouves=()
+    [ -d "$parent/$voulu" ] && { printf '%s\n' "$voulu"; return 0; }
+    for e in "$parent"/*/; do
+        [ -d "$e" ] || continue
+        n=$(basename "$e")
+        [ "${n,,}" = "${voulu,,}" ] && trouves+=("$n")
+    done
+    case "${#trouves[@]}" in
+        1) printf '%s\n' "${trouves[0]}" ;;
+        0) die "Exemple inconnu : « $demande ». Voir la liste avec steami-exemples." ;;
+        *) die "Nom ambigu : « $demande » correspond à plusieurs exemples (${trouves[*]}). Voir la liste avec steami-exemples." ;;
+    esac
 }
 
 # Complète CODESPACE_NAME et GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN depuis le

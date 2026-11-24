@@ -4,7 +4,9 @@
 set -u
 
 RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LIB=/opt/steami/arduino-steami-lib
+LIB=/opt/steami/libs/STeaMi
+# Le tag du paquet : la ligne « ARG STEAMI_PAQUET= » du Dockerfile, seule source.
+PAQUET=$(sed -n 's/^ARG STEAMI_PAQUET=//p' "$(dirname "${BASH_SOURCE[0]}")/source/Dockerfile")
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -16,13 +18,16 @@ command -v pio >/dev/null 2>&1 || echec "pio est introuvable"
   || echec "pio --version devrait afficher 6.1.19, obtenu : $(pio --version)"
 ok "PlatformIO 6.1.19"
 
-[ "$(git -C "$LIB" describe --tags 2>/dev/null)" = v0.24.0 ] \
-  || echec "arduino-steami-lib devrait être au tag v0.24.0"
-ok "arduino-steami-lib v0.24.0"
+[ -n "$PAQUET" ] || echec "ARG STEAMI_PAQUET introuvable dans le Dockerfile"
+[ "$(git -C "$LIB" describe --tags 2>/dev/null)" = "$PAQUET" ] \
+  || echec "le paquet STeaMi devrait être au tag $PAQUET"
+grep -qx "version=${PAQUET#v}" "$LIB/library.properties" \
+  || echec "library.properties devrait déclarer version=${PAQUET#v}"
+ok "paquet STeaMi $PAQUET"
 
-[ -d "$LIB/lib/lis2mdl/examples/BasicReader" ] \
-  || echec "exemple lis2mdl/BasicReader introuvable"
-ok "exemple lis2mdl/BasicReader présent"
+[ -d "$LIB/examples/LIS2MDL/BasicReader" ] \
+  || echec "exemple LIS2MDL/BasicReader introuvable"
+ok "exemple LIS2MDL/BasicReader présent"
 
 cp -r "$RACINE/.devcontainer/source/amorcage" "$TMP/projet"
 cd "$TMP/projet" || exit 1
@@ -30,19 +35,18 @@ cd "$TMP/projet" || exit 1
 pio run -e steami >"$TMP/base.log" 2>&1 || { tail -30 "$TMP/base.log" >&2; echec "compilation du projet d'amorçage"; }
 ok "projet d'amorçage compilé"
 
-steami-exemples lis2mdl | grep -qx lis2mdl/BasicReader \
-  || echec "steami-exemples lis2mdl devrait lister lis2mdl/BasicReader"
+steami-exemples lis2mdl | grep -qx LIS2MDL/BasicReader \
+  || echec "steami-exemples lis2mdl devrait lister LIS2MDL/BasicReader"
 ok "steami-exemples"
 
-steami-compiler lis2mdl/BasicReader >"$TMP/cmd.log" 2>&1 \
-  || { tail -30 "$TMP/cmd.log" >&2; echec "steami-compiler lis2mdl/BasicReader"; }
-[ -s .steami/firmware.bin ] && grep -q '"programme": "lis2mdl/BasicReader"' .steami/firmware.json \
+steami-compiler lis2mdl/basicreader >"$TMP/cmd.log" 2>&1 \
+  || { tail -30 "$TMP/cmd.log" >&2; echec "steami-compiler lis2mdl/basicreader"; }
+[ -s .steami/firmware.bin ] && grep -q '"programme": "LIS2MDL/BasicReader"' .steami/firmware.json \
   || echec "steami-compiler n'a pas écrit .steami/firmware.bin et firmware.json"
-ok "steami-compiler lis2mdl/BasicReader"
+ok "steami-compiler lis2mdl/basicreader (nom réel : LIS2MDL/BasicReader)"
 
-for ex in lis2mdl/BasicReader ble/BleBeacon; do
-  dossier="$LIB/lib/${ex%%/*}/examples/${ex##*/}"
-  PLATFORMIO_SRC_DIR="$dossier" pio run -e steami >"$TMP/ex.log" 2>&1 \
+for ex in LIS2MDL/BasicReader LIS2MDL/DigitalCompass BLE/BleHotCold; do
+  PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 \
     || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
   ok "$ex compilé"
 done

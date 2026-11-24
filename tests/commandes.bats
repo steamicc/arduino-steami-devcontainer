@@ -8,11 +8,11 @@ setup() {
   SRC="$BATS_TEST_DIRNAME/../.devcontainer/source"
   export PATH="$BATS_TEST_DIRNAME/stubs:$SRC:$PATH"
   TMP="$(mktemp -d)"
-  export STEAMI_LIB="$TMP/lib-steami"
+  export STEAMI_LIB="$TMP/STeaMi"
   export PIO_STUB_LOG="$TMP/pio.log"
-  mkdir -p "$STEAMI_LIB/lib/lis2mdl/examples/BasicReader" "$STEAMI_LIB/lib/hts221/examples/dew_point"
-  echo '// basic' > "$STEAMI_LIB/lib/lis2mdl/examples/BasicReader/BasicReader.ino"
-  echo '// dew' > "$STEAMI_LIB/lib/hts221/examples/dew_point/dew_point.ino"
+  mkdir -p "$STEAMI_LIB/examples/LIS2MDL/BasicReader" "$STEAMI_LIB/examples/WSEN-HIDS/dew_point"
+  echo '// basic' > "$STEAMI_LIB/examples/LIS2MDL/BasicReader/BasicReader.ino"
+  echo '// dew' > "$STEAMI_LIB/examples/WSEN-HIDS/dew_point/dew_point.ino"
   DEPOT="$TMP/depot"
   mkdir -p "$DEPOT/src"
   echo '[env:steami]' > "$DEPOT/platformio.ini"
@@ -32,7 +32,7 @@ teardown() {
 @test "exemples_liste_tout" {
   run steami-exemples
   [ "$status" -eq 0 ]
-  [ "$output" = $'hts221/dew_point\nlis2mdl/BasicReader' ]
+  [ "$output" = $'LIS2MDL/BasicReader\nWSEN-HIDS/dew_point' ]
 }
 
 @test "exemples_filtre_inconnu" {
@@ -41,36 +41,59 @@ teardown() {
   [[ "$output" == *"Aucun exemple pour « zzz »"* ]]
 }
 
-@test "exemples_masque_les_exclus" {
-  mkdir -p "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass"
-  echo '// cassé' > "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass/DigitalCompass.ino"
-  run steami-exemples
+@test "exemples_filtre_insensible_a_la_casse" {
+  run steami-exemples lis2mdl
   [ "$status" -eq 0 ]
-  [ "$output" = $'hts221/dew_point\nlis2mdl/BasicReader' ]
+  [ "$output" = "LIS2MDL/BasicReader" ]
+  run steami-exemples Wsen
+  [ "$status" -eq 0 ]
+  [ "$output" = "WSEN-HIDS/dew_point" ]
 }
 
-@test "exemples_exclus_liste_vide" {
-  mkdir -p "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass"
-  echo '// ok' > "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass/DigitalCompass.ino"
-  EXEMPLES_EXCLUS="" run steami-exemples lis2mdl
+@test "exemples_liste_tout_sans_masque" {
+  mkdir -p "$STEAMI_LIB/examples/LIS2MDL/DigitalCompass"
+  echo '// ok' > "$STEAMI_LIB/examples/LIS2MDL/DigitalCompass/DigitalCompass.ino"
+  run steami-exemples lis2mdl
   [ "$status" -eq 0 ]
-  [[ "$output" == *"lis2mdl/DigitalCompass"* ]]
+  [ "$output" = $'LIS2MDL/BasicReader\nLIS2MDL/DigitalCompass' ]
 }
 
-@test "exemple_exclu_demande_quand_meme_avertit" {
-  mkdir -p "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass"
-  echo '// cassé' > "$STEAMI_LIB/lib/lis2mdl/examples/DigitalCompass/DigitalCompass.ino"
-  run steami-compiler lis2mdl/DigitalCompass
-  [[ "$output" == *"ne compile pas"* ]]
-  run steami-copier lis2mdl/DigitalCompass
-  [[ "$output" == *"ne compile pas"* ]]
+@test "nom_insensible_a_la_casse_compiler" {
+  run steami-compiler lis2mdl/basicreader
+  [ "$status" -eq 0 ]
+  grep -qx "PLATFORMIO_SRC_DIR=$STEAMI_LIB/examples/LIS2MDL/BasicReader" "$PIO_STUB_LOG"
+  grep -q '"programme": "LIS2MDL/BasicReader"' .steami/firmware.json
+}
+
+@test "nom_insensible_a_la_casse_copier" {
+  run steami-copier lis2mdl/basicreader
+  [ "$status" -eq 0 ]
+  [ "$(ls src)" = BasicReader.ino ]
+}
+
+@test "nom_ambigu_refuse" {
+  mkdir -p "$STEAMI_LIB/examples/LIS2MDL/basicreader"
+  echo '// autre' > "$STEAMI_LIB/examples/LIS2MDL/basicreader/basicreader.ino"
+  run steami-compiler lis2mdl/BASICREADER
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"ambigu"* ]]
+  [[ "$output" == *"steami-exemples"* ]]
+  run steami-compiler LIS2MDL/BasicReader
+  [ "$status" -eq 0 ]
+}
+
+@test "nom_inconnu_renvoie_a_steami_exemples" {
+  run steami-compiler lis2mdl/Inconnu
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Exemple inconnu"* ]]
+  [[ "$output" == *"steami-exemples"* ]]
 }
 
 @test "exemple_sans_nom_refuse" {
-  run steami-compiler lis2mdl/
+  run steami-compiler LIS2MDL/
   [ "$status" -eq 1 ]
   [[ "$output" == *"Exemple inconnu"* ]]
-  run steami-copier --remplacer lis2mdl/
+  run steami-copier --remplacer LIS2MDL/
   [ "$status" -eq 1 ]
   [[ "$output" == *"Exemple inconnu"* ]]
   [ -f src/main.cpp ]
@@ -116,10 +139,10 @@ teardown() {
 }
 
 @test "compiler_exemple" {
-  run steami-compiler lis2mdl/BasicReader
+  run steami-compiler LIS2MDL/BasicReader
   [ "$status" -eq 0 ]
-  grep -qx "PLATFORMIO_SRC_DIR=$STEAMI_LIB/lib/lis2mdl/examples/BasicReader" "$PIO_STUB_LOG"
-  grep -q '"programme": "lis2mdl/BasicReader"' .steami/firmware.json
+  grep -qx "PLATFORMIO_SRC_DIR=$STEAMI_LIB/examples/LIS2MDL/BasicReader" "$PIO_STUB_LOG"
+  grep -q '"programme": "LIS2MDL/BasicReader"' .steami/firmware.json
 }
 
 @test "compiler_exemple_inconnu" {
@@ -139,21 +162,21 @@ teardown() {
 }
 
 @test "copier_remplace_src" {
-  run steami-copier lis2mdl/BasicReader
+  run steami-copier LIS2MDL/BasicReader
   [ "$status" -eq 0 ]
   [ "$(ls src)" = BasicReader.ino ]
 }
 
 @test "copier_ignore_ino_cpp_genere" {
-  echo '// généré par PlatformIO' > "$STEAMI_LIB/lib/lis2mdl/examples/BasicReader/BasicReader.ino.cpp"
-  run steami-copier lis2mdl/BasicReader
+  echo '// généré par PlatformIO' > "$STEAMI_LIB/examples/LIS2MDL/BasicReader/BasicReader.ino.cpp"
+  run steami-copier LIS2MDL/BasicReader
   [ "$status" -eq 0 ]
   [ "$(ls src)" = BasicReader.ino ]
 }
 
 @test "copier_refuse_src_modifie" {
   echo '// modifié' >> src/main.cpp
-  run steami-copier lis2mdl/BasicReader
+  run steami-copier LIS2MDL/BasicReader
   [ "$status" -eq 1 ]
   [[ "$output" == *"steami-sauver"* ]]
   [[ "$output" == *"--remplacer"* ]]
@@ -162,7 +185,7 @@ teardown() {
 
 @test "copier_remplacer_force" {
   echo '// modifié' >> src/main.cpp
-  run steami-copier --remplacer lis2mdl/BasicReader
+  run steami-copier --remplacer LIS2MDL/BasicReader
   [ "$status" -eq 0 ]
   [ "$(ls src)" = BasicReader.ino ]
 }

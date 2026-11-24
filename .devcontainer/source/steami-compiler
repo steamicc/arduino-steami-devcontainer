@@ -7,7 +7,7 @@ source "$(dirname "$0")/steami-commun.sh" 2>/dev/null || source /usr/local/lib/s
 
 usage() {
     cat <<'EOT'
-Usage : steami-compiler [driver/Exemple]
+Usage : steami-compiler [COMPOSANT/Exemple]
 
 Sans argument, compile votre programme (le dossier src/).
 Avec un argument, compile cet exemple tel quel, sans toucher à src/
@@ -22,16 +22,17 @@ EOT
 case "${1:-}" in
     -h|--help) usage; exit 0 ;;
 esac
-[ "$#" -le 1 ] || die "Trop d'arguments. Usage : steami-compiler [driver/Exemple]"
+[ "$#" -le 1 ] || die "Trop d'arguments. Usage : steami-compiler [COMPOSANT/Exemple]"
 
 racine=$(racine_depot) || die "Lancez steami-compiler dans votre projet (un dossier qui contient platformio.ini)."
 cd "$racine"
 
 programme=src
 if [ "$#" -eq 1 ]; then
-    programme="$1"
-    PLATFORMIO_SRC_DIR=$(dossier_exemple "$programme")
+    PLATFORMIO_SRC_DIR=$(dossier_exemple "$1")
     export PLATFORMIO_SRC_DIR
+    # Le nom réel (COMPOSANT/Exemple), pas celui que la personne a tapé.
+    programme=$(basename "$(dirname "$PLATFORMIO_SRC_DIR")")/$(basename "$PLATFORMIO_SRC_DIR")
 fi
 
 run pio run -e steami \

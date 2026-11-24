@@ -16,7 +16,7 @@ FROM mcr.microsoft.com/devcontainers/python@sha256:589b65db720b03c96d721706005f1
 
 # Rattache le paquet publié sur ghcr.io au dépôt de l'image.
 LABEL org.opencontainers.image.source="https://github.com/steamicc/arduino-steami-devcontainer" \
-      org.opencontainers.image.description="Environnement Arduino STeaMi : PlatformIO, toolchain STM32 et drivers arduino-steami-lib"
+      org.opencontainers.image.description="Environnement Arduino STeaMi : PlatformIO, toolchain STM32 et paquet Arduino STeaMi"
 
 # Refuse tout de suite une autre architecture plutôt que d'échouer au milieu.
 RUN [ "$(dpkg --print-architecture)" = amd64 ] \
@@ -44,12 +44,21 @@ RUN set -eu; \
     /opt/steami/venv/bin/pip install --no-cache-dir platformio==6.1.19; \
     [ "$(pio --version)" = "PlatformIO Core, version 6.1.19" ]
 
-# Drivers : arduino-steami-lib au tag v0.24.0 (carte, bibliothèques, exemples).
-RUN git clone --depth 1 --branch v0.24.0 \
-      https://github.com/steamicc/arduino-steami-lib.git /opt/steami/arduino-steami-lib \
-    && [ "$(git -C /opt/steami/arduino-steami-lib describe --tags)" = v0.24.0 ]
+# Drivers : le paquet Arduino « STeaMi » (steamicc/arduino-steami), le même que
+# celui de l'Arduino IDE, au tag fixé par STEAMI_PAQUET (une seule source de
+# vérité : le workflow suivre-paquet.yml lit et met à jour cette ligne).
+ARG STEAMI_PAQUET=v0.25.1
+RUN git clone --depth 1 --branch "$STEAMI_PAQUET" \
+      https://github.com/steamicc/arduino-steami.git /opt/steami/libs/STeaMi \
+    && [ "$(git -C /opt/steami/libs/STeaMi describe --tags)" = "$STEAMI_PAQUET" ] \
+    && grep -qx "version=${STEAMI_PAQUET#v}" /opt/steami/libs/STeaMi/library.properties
 
-# Bibliothèque tierce : STM32duinoBLE 1.5.0, pour les exemples ble/.
+# Définition de la carte : absente du paquet, copiée dans le dépôt de l'image
+# (identique à boards/steami.json d'arduino-steami-lib au même tag).
+COPY --chown=vscode:vscode boards /opt/steami/boards
+
+# Bibliothèque tierce : STM32duinoBLE 1.5.0, que le paquet déclare (depends) et
+# dont les exemples BLE ont besoin.
 RUN mkdir -p /opt/steami/libs && pio pkg install --storage-dir /opt/steami/libs -l stm32duino/STM32duinoBLE@1.5.0
 
 # Compilation d'amorçage : télécharge la plateforme, le framework et la
