@@ -116,5 +116,72 @@ EOT
   [[ "$output" == *"GitHub n'a pas pu vous identifier"* ]]
   [[ "$output" == *"terminal de VS Code"* ]]
   [[ "$output" != *"Use this template"* ]]
+  [[ "$output" != *"✗ ✗"* ]]
   [ "$(git log -1 --format=%s)" = ssh ]
+}
+
+@test "sauver_push_auth_authentication_failed" {
+  avec_origin
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/git" <<'EOT'
+#!/bin/sh
+if [ "$1" = push ]; then
+  printf '%b\n' "remote: Invalid credentials\nfatal: Authentication failed for 'https://github.com/x/y.git/'" >&2
+  exit 128
+fi
+exec /usr/bin/git "$@"
+EOT
+  chmod +x "$TMP/bin/git"
+  export PATH="$TMP/bin:$PATH"
+  echo '// modif' >> src/main.cpp
+  run steami-sauver "auth"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Authentication failed"* ]]
+  [[ "$output" == *"GitHub n'a pas pu vous identifier"* ]]
+  [[ "$output" != *"Use this template"* ]]
+  [[ "$output" != *"✗ ✗"* ]]
+}
+
+@test "sauver_push_auth_terminal_prompts_disabled" {
+  avec_origin
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/git" <<'EOT'
+#!/bin/sh
+if [ "$1" = push ]; then
+  printf '%b\n' "fatal: could not read Password: terminal prompts disabled" >&2
+  exit 128
+fi
+exec /usr/bin/git "$@"
+EOT
+  chmod +x "$TMP/bin/git"
+  export PATH="$TMP/bin:$PATH"
+  echo '// modif' >> src/main.cpp
+  run steami-sauver "auth"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"terminal prompts disabled"* ]]
+  [[ "$output" == *"GitHub n'a pas pu vous identifier"* ]]
+  [[ "$output" != *"Use this template"* ]]
+  [[ "$output" != *"✗ ✗"* ]]
+}
+
+@test "sauver_push_auth_invalid_username_or_token" {
+  avec_origin
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/git" <<'EOT'
+#!/bin/sh
+if [ "$1" = push ]; then
+  printf '%b\n' "remote: Invalid username or token. Password authentication is not supported for Git operations." >&2
+  exit 128
+fi
+exec /usr/bin/git "$@"
+EOT
+  chmod +x "$TMP/bin/git"
+  export PATH="$TMP/bin:$PATH"
+  echo '// modif' >> src/main.cpp
+  run steami-sauver "auth"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Invalid username or token"* ]]
+  [[ "$output" == *"GitHub n'a pas pu vous identifier"* ]]
+  [[ "$output" != *"Use this template"* ]]
+  [[ "$output" != *"✗ ✗"* ]]
 }
