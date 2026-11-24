@@ -28,11 +28,20 @@ RUN [ "$(dpkg --print-architecture)" = amd64 ] \
 ENV PLATFORMIO_CORE_DIR=/opt/platformio \
     PLATFORMIO_SETTING_ENABLE_TELEMETRY=No \
     PLATFORMIO_SETTING_CHECK_PLATFORMIO_INTERVAL=36500
+
+# /opt/steami et /opt/platformio appartiennent à vscode dès leur création, et
+# tout ce qu'on y écrit l'est par vscode (USER vscode) : un chown -R après coup
+# réécrirait dans une couche à part ~2 Go de fichiers, et chaque Codespace
+# les télécharge deux fois. PlatformIO écrit <croquis>.ino.cpp dans le dossier
+# de l'exemple, et git refuse un dépôt qui appartient à un autre utilisateur.
 RUN set -eu; \
     mkdir -p /opt/steami /opt/platformio; \
+    chown vscode:vscode /opt/steami /opt/platformio; \
+    ln -s /opt/steami/venv/bin/pio /usr/local/bin/pio
+USER vscode
+RUN set -eu; \
     python -m venv /opt/steami/venv; \
     /opt/steami/venv/bin/pip install --no-cache-dir platformio==6.1.19; \
-    ln -s /opt/steami/venv/bin/pio /usr/local/bin/pio; \
     [ "$(pio --version)" = "PlatformIO Core, version 6.1.19" ]
 
 # Drivers : arduino-steami-lib au tag v0.24.0 (carte, bibliothèques, exemples).
@@ -45,17 +54,13 @@ RUN mkdir -p /opt/steami/libs && pio pkg install --storage-dir /opt/steami/libs 
 
 # Compilation d'amorçage : télécharge la plateforme, le framework et la
 # toolchain dans /opt/platformio ; le résultat de la compilation est jeté.
-COPY amorcage /tmp/amorcage
+COPY --chown=vscode:vscode amorcage /tmp/amorcage
 RUN set -eu; \
     cd /tmp/amorcage; \
     pio run -e steami; \
     cd /; \
     rm -rf /tmp/amorcage
-
-# /opt/steami et /opt/platformio appartiennent à vscode : PlatformIO écrit
-# <croquis>.ino.cpp dans le dossier de l'exemple, et git refuse un dépôt qui
-# appartient à un autre utilisateur.
-RUN chown -R vscode:vscode /opt/steami /opt/platformio
+USER root
 
 # bats : lance les tests des commandes (tests/commandes.bats) dans l'image.
 RUN apt-get update \
