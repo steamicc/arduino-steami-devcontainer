@@ -76,3 +76,45 @@ export function texteEncart(etat) {
   }
   return 'Ce navigateur ne sait pas parler à la carte en USB. Utilisez Chrome ou Edge. Sinon : ' + GLISSER;
 }
+
+// Mise à jour du DAPLink : décisions pures, sans accès à la carte.
+
+// Les numéros de série des cartes STeaMi commencent par 0839.
+export function estSteami(numeroSerie) {
+  return typeof numeroSerie === 'string' && numeroSerie.startsWith('0839');
+}
+
+// Réponse (DataView) à la commande vendeur 0x9F : octet 0 = commande répétée,
+// octets 1-4 = « STM1 », 5-8 = numéro, 9-12 = date (entiers 32 bits little-endian).
+export function lireVersionSteami(reponse) {
+  if (!reponse || reponse.byteLength < 13) return null;
+  const marque = String.fromCharCode(
+    reponse.getUint8(1),
+    reponse.getUint8(2),
+    reponse.getUint8(3),
+    reponse.getUint8(4),
+  );
+  if (marque !== 'STM1') return null;
+  return { numero: reponse.getUint32(5, true), date: reponse.getUint32(9, true) };
+}
+
+export function lireFirmwareEpingle(json) {
+  if (!json || typeof json.release !== 'string') return null;
+  if (!Number.isInteger(json.numero) || json.numero <= 0) return null;
+  return { release: json.release, numero: json.numero };
+}
+
+export function decisionMiseAJour(version, epingle) {
+  if (!version) return 'ancien';
+  if (version.numero === 0) return 'dev';
+  return version.numero < epingle.numero ? 'ancien' : 'a-jour';
+}
+
+// La déconnexion (reset de la carte pendant la mise à jour) ne masque jamais l'encart.
+export function etatEncartApresDeconnexion(etat) {
+  return etat;
+}
+
+export function texteMiseAJour(release) {
+  return `Une mise à jour du DAPLink de cette carte est disponible (release ${release}).`;
+}
