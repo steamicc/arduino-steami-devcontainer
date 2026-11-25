@@ -1,6 +1,6 @@
 // Page « Téléverser » : relie le DOM à DAP.js (global DAPjs, vendor/dap.umd.js).
 import { TamponLignes } from './console.js';
-import { etatWebUSB, messageErreur, resumeProgramme, texteEncart } from './support.js';
+import { etatWebUSB, messageErreur, messageRedemarrage, resumeProgramme, texteEncart } from './support.js';
 
 const $ = (id) => document.getElementById(id);
 const VENDOR_ID_DAPLINK = 0x0d28;
@@ -35,6 +35,7 @@ function planifierConsole() {
 
 function majBoutons() {
   $('televerser').disabled = !dap || !programme || occupe;
+  $('redemarrer').disabled = !dap || occupe;
   $('connecter').disabled = occupe || !!dap || !usbPossible;
 }
 
@@ -117,17 +118,32 @@ async function televerser() {
       return;
     }
     await dap.flash(donnees);
-    // La carte redémarre déjà d'elle-même : DAPLink réinitialise la cible à la
-    // fermeture du flux de flash. Le DAPLink de la STeaMi n'implémente pas
-    // DAP_ResetTarget (reset() ne fait rien pour l'instant), voir
-    // https://github.com/steamicc/DAPLink/issues/10 ; appel conservé pour plus tard.
-    await new Promise((r) => setTimeout(r, 1000));
-    await dap.reset();
+    // Pas de dap.reset() ici : le DAPLink redémarre déjà la carte à la fin du
+    // flash (auto_rst). Depuis steamicc/DAPLink#10, reset() redémarre vraiment
+    // la carte : l'appeler ici ferait démarrer le programme deux fois.
     afficher('Programme téléversé.');
   } catch (err) {
     afficher(messageErreur(err));
   } finally {
     // Relance la lecture série si la carte est toujours là.
+    if (dap && !boucle) demarrerSerie();
+    occupe = false;
+    majBoutons();
+  }
+}
+
+// Relance le programme sans débrancher la carte (DAP_ResetTarget). La lecture
+// série est arrêtée pendant la commande : DAP.js n'ordonne pas les échanges
+// de la boucle série et ceux de reset().
+async function redemarrer() {
+  occupe = true;
+  majBoutons();
+  try {
+    await arreterSerie();
+    afficher(messageRedemarrage(await dap.reset()));
+  } catch (err) {
+    afficher(messageErreur(err));
+  } finally {
     if (dap && !boucle) demarrerSerie();
     occupe = false;
     majBoutons();
@@ -154,6 +170,7 @@ function afficherEncart() {
 
 $('connecter').addEventListener('click', connecter);
 $('televerser').addEventListener('click', televerser);
+$('redemarrer').addEventListener('click', redemarrer);
 $('effacer').addEventListener('click', () => {
   tampon.vider();
   planifierConsole();
