@@ -28,7 +28,7 @@ Le workflow `devcontainer.yml` fait la même chose à chaque PR et à chaque pus
 
 ## Versions figées
 
-Toutes les versions sont exactes, jamais une plage : PlatformIO `6.1.19`, plateforme `ststm32@19.7.1`, framework `platformio/framework-arduinoststm32@4.21200.0`, STM32duinoBLE `1.5.0`, le paquet Arduino STeaMi (`steamicc/arduino-steami`) au tag `ARG STEAMI_PAQUET` du Dockerfile, DAP.js `2.3.0` (copie embarquée, sans CDN). Changer l'une d'elles, c'est publier une nouvelle image.
+Toutes les versions sont exactes, jamais une plage : PlatformIO `6.1.19`, plateforme `ststm32@20.0.0`, framework `platformio/framework-arduinoststm32@4.30100.0` (STM32duino 3.1.0, comme l'Arduino IDE), STM32duinoBLE `1.5.0`, le paquet Arduino STeaMi (`steamicc/arduino-steami`) au tag `ARG STEAMI_PAQUET` du Dockerfile, DAP.js `2.3.0` (copie embarquée, sans CDN). Changer l'une d'elles, c'est publier une nouvelle image.
 
 ## Publier une nouvelle image
 
@@ -45,7 +45,7 @@ Le résumé du job rappelle ces étapes et signale les configurations qui ne poi
 
 ## Mettre à jour le paquet des drivers
 
-Les drivers viennent du paquet Arduino « STeaMi » (`steamicc/arduino-steami`), le même que celui de l'Arduino IDE, cloné au tag fixé par `ARG STEAMI_PAQUET` dans `.devcontainer/source/Dockerfile` (seule source du tag : le smoke-test et le workflow le lisent). La définition de la carte n'est pas dans le paquet : elle est copiée dans `.devcontainer/source/boards/steami.json` (copiée depuis `boards/steami.json` d'`arduino-steami-lib` v0.25.1 ; la mise à jour automatique ne change que l'`ARG`, donc elle n'est pas rafraîchie toute seule).
+Les drivers viennent du paquet Arduino « STeaMi » (`steamicc/arduino-steami`), le même que celui de l'Arduino IDE, cloné au tag fixé par `ARG STEAMI_PAQUET` dans `.devcontainer/source/Dockerfile` (seule source du tag : le smoke-test et le workflow le lisent). La définition de la carte n'est pas dans le paquet : elle est copiée dans `.devcontainer/source/boards/steami.json` (copiée depuis `boards/steami.json` d'`arduino-steami-lib` v0.30.0 ; la mise à jour automatique ne change que l'`ARG`, donc elle n'est pas rafraîchie toute seule).
 
 **Mise à jour automatique.** Le workflow `suivre-paquet.yml` tourne une fois par jour (et à la demande, Actions, « Run workflow »). Quand `steamicc/arduino-steami` publie une release plus récente que l'`ARG`, il ouvre la PR « chore: paquet arduino-steami vX.Y.Z » sur la branche `chore/paquet-vX.Y.Z` (une seule fois par release : s'il existe déjà une branche ou une PR de ce nom, même fermée, il ne fait rien) et lance `devcontainer.yml` sur cette branche, car une PR créée avec `GITHUB_TOKEN` ne déclenche pas les workflows `pull_request`. Il reste à faire :
 
