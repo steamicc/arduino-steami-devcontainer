@@ -88,6 +88,20 @@ COPY steami-exemples steami-compiler steami-copier steami-sauver steami-serveur 
 # DAP.js 2.3.0 est embarqué dans flasher/vendor, sans CDN.
 COPY --chown=vscode:vscode flasher /opt/steami/flasher
 
+# Firmware DAPLink de la STeaMi, embarqué pour que la page propose la mise à jour
+# sans réseau : release et SHA256 fixés ici (le smoke-test les relit).
+ARG STEAMI_DAPLINK_RELEASE=2026-11-25.3
+ARG STEAMI_DAPLINK_SHA256=73b67af70d7c42ef66589698caca95a89e8bd90b7001bfce0e570c70691287ea
+RUN mkdir -p /opt/steami/flasher/daplink \
+    && curl -fsSL -o /opt/steami/flasher/daplink/firmware.bin \
+      "https://github.com/steamicc/DAPLink/releases/download/${STEAMI_DAPLINK_RELEASE}/stm32f103xb_steami32_if_crc.bin" \
+    && echo "${STEAMI_DAPLINK_SHA256}  /opt/steami/flasher/daplink/firmware.bin" | sha256sum -c - \
+    && printf '{"release": "%s", "numero": %s, "taille": %s, "sha256": "%s"}\n' \
+      "$STEAMI_DAPLINK_RELEASE" "${STEAMI_DAPLINK_RELEASE##*.}" \
+      "$(stat -c %s /opt/steami/flasher/daplink/firmware.bin)" "$STEAMI_DAPLINK_SHA256" \
+      > /opt/steami/flasher/daplink/firmware.json \
+    && chown -R vscode:vscode /opt/steami/flasher/daplink
+
 # Message d'accueil du premier terminal : l'image de base le lit à cet endroit.
 COPY first-run-notice.txt /usr/local/etc/vscode-dev-containers/first-run-notice.txt
 
