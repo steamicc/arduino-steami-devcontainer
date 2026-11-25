@@ -5,11 +5,17 @@ import assert from 'node:assert/strict';
 
 import { TamponLignes } from '../.devcontainer/source/flasher/console.js';
 import {
+  decisionMiseAJour,
+  estSteami,
+  etatEncartApresDeconnexion,
   etatWebUSB,
+  lireFirmwareEpingle,
+  lireVersionSteami,
   messageErreur,
   messageRedemarrage,
   resumeProgramme,
   texteEncart,
+  texteMiseAJour,
 } from '../.devcontainer/source/flasher/support.js';
 
 test('TamponLignes : ne renvoie que les lignes complètes', () => {
@@ -100,4 +106,69 @@ test('texteEncart : le plan B passe par firmware.bin, jamais par steami-copier',
   }
   assert.match(texteEncart('iframe'), /Ports/);
   assert.match(texteEncart('iframe'), /steami-televerser/);
+});
+
+function vue(octets) {
+  return new DataView(Uint8Array.from(octets).buffer);
+}
+
+const STM1 = [0x53, 0x54, 0x4d, 0x31];
+
+test('estSteami : reconnaît le préfixe 0839 du numéro de série', () => {
+  assert.equal(estSteami('08390001066fff56'), true);
+  assert.equal(estSteami('9904360258994e45'), false);
+  assert.equal(estSteami(''), false);
+  assert.equal(estSteami(undefined), false);
+});
+
+test('lireVersionSteami : lit le numéro et la date (little-endian)', () => {
+  const r = vue([0x9f, ...STM1, 0x25, 0, 0, 0, 0x06, 0x29, 0x35, 0x01]);
+  assert.deepEqual(lireVersionSteami(r), { numero: 37, date: 20261126 });
+});
+
+test('lireVersionSteami : null si la réponse est trop courte', () => {
+  assert.equal(lireVersionSteami(vue([0x9f])), null);
+  assert.equal(lireVersionSteami(vue([0x9f, ...STM1, 0x25, 0, 0, 0, 0x06, 0x29, 0x35])), null);
+});
+
+test('lireVersionSteami : null si 64 octets sans la marque STM1', () => {
+  let graine = 12345;
+  const alea = () => {
+    graine = (graine * 1103515245 + 12345) % 2147483648;
+    return graine % 256;
+  };
+  const octets = [0x9f];
+  for (let i = 1; i < 64; i++) octets.push(alea());
+  assert.notDeepEqual(octets.slice(1, 5), STM1);
+  assert.equal(lireVersionSteami(vue(octets)), null);
+});
+
+test('lireFirmwareEpingle : accepte une release et un numéro entier positif', () => {
+  assert.deepEqual(lireFirmwareEpingle({ release: '2026-11-26.37', numero: 37 }), {
+    release: '2026-11-26.37',
+    numero: 37,
+  });
+  assert.equal(lireFirmwareEpingle(null), null);
+  assert.equal(lireFirmwareEpingle({}), null);
+  assert.equal(lireFirmwareEpingle({ release: 'x', numero: 0 }), null);
+  assert.equal(lireFirmwareEpingle({ release: 'x', numero: '37' }), null);
+});
+
+test('decisionMiseAJour : ancien, dev ou à jour', () => {
+  const epingle = { release: '2026-11-26.37', numero: 37 };
+  assert.equal(decisionMiseAJour(null, epingle), 'ancien');
+  assert.equal(decisionMiseAJour({ numero: 0, date: 0 }, epingle), 'dev');
+  assert.equal(decisionMiseAJour({ numero: 36, date: 1 }, epingle), 'ancien');
+  assert.equal(decisionMiseAJour({ numero: 37, date: 1 }, epingle), 'a-jour');
+  assert.equal(decisionMiseAJour({ numero: 38, date: 1 }, epingle), 'a-jour');
+});
+
+test("etatEncartApresDeconnexion : la déconnexion ne masque jamais l'encart", () => {
+  assert.equal(etatEncartApresDeconnexion('etapes'), 'etapes');
+  assert.equal(etatEncartApresDeconnexion('propose'), 'propose');
+  assert.equal(etatEncartApresDeconnexion('masque'), 'masque');
+});
+
+test('texteMiseAJour : mentionne la release', () => {
+  assert.ok(texteMiseAJour('2026-11-26.37').includes('2026-11-26.37'));
 });
