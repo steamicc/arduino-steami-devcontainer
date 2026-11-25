@@ -47,14 +47,14 @@ RUN set -eu; \
 # Drivers : le paquet Arduino « STeaMi » (steamicc/arduino-steami), le même que
 # celui de l'Arduino IDE, au tag fixé par STEAMI_PAQUET (une seule source de
 # vérité : le workflow suivre-paquet.yml lit et met à jour cette ligne).
-ARG STEAMI_PAQUET=v0.25.1
+ARG STEAMI_PAQUET=v0.30.0
 RUN git clone --depth 1 --branch "$STEAMI_PAQUET" \
       https://github.com/steamicc/arduino-steami.git /opt/steami/libs/STeaMi \
     && [ "$(git -C /opt/steami/libs/STeaMi describe --tags)" = "$STEAMI_PAQUET" ] \
     && grep -qx "version=${STEAMI_PAQUET#v}" /opt/steami/libs/STeaMi/library.properties
 
 # Définition de la carte : absente du paquet, copiée dans le dépôt de l'image
-# (copiée depuis boards/steami.json d'arduino-steami-lib v0.25.1 ; à comparer
+# (copiée depuis boards/steami.json d'arduino-steami-lib v0.30.0 ; à comparer
 # avec le nouveau tag à chaque mise à jour du paquet, voir CONTRIBUTING.md).
 COPY --chown=vscode:vscode boards /opt/steami/boards
 

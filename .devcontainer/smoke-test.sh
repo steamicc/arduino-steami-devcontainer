@@ -45,11 +45,15 @@ steami-compiler lis2mdl/basicreader >"$TMP/cmd.log" 2>&1 \
   || echec "steami-compiler n'a pas écrit .steami/firmware.bin et firmware.json"
 ok "steami-compiler lis2mdl/basicreader (nom réel : LIS2MDL/BasicReader)"
 
-for ex in LIS2MDL/BasicReader LIS2MDL/DigitalCompass BLE/BleHotCold BLE/BleBeacon; do
+# Tous les exemples du paquet, tels que steami-exemples les liste.
+nb=0
+for ex in $(steami-exemples); do
   PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 \
     || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
-  ok "$ex compilé"
+  nb=$((nb + 1))
 done
+[ "$nb" -ge 50 ] || echec "steami-exemples ne liste que $nb exemples"
+ok "$nb exemples compilés"
 
 # zsh par défaut, historique conservé dans /workspaces (volume persistant d'un
 # Codespace). STEAMI_WORKSPACES remplace /workspaces pour pouvoir le simuler.
