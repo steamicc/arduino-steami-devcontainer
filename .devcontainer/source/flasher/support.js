@@ -37,6 +37,17 @@ export function messageErreur(err) {
   return message;
 }
 
+// Résultat du bouton « Redémarrer la carte » : ok est la valeur de dap.reset().
+// Un DAPLink sans le correctif de steamicc/DAPLink#10 (avant la release
+// 2026-11-25) répond que le redémarrage n'a pas eu lieu.
+export function messageRedemarrage(ok) {
+  if (ok) return 'Carte redémarrée : le programme repart du début.';
+  return (
+    'Cette carte ne sait pas redémarrer depuis la page : son DAPLink est trop ancien. ' +
+    'Débranchez-la puis rebranchez-la, ou mettez à jour son DAPLink.'
+  );
+}
+
 // Phrase du bandeau : quel programme est prêt à être téléversé.
 export function resumeProgramme(json) {
   if (!json) return 'Aucun programme compilé : lancez steami-compiler';

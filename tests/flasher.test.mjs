@@ -7,6 +7,7 @@ import { TamponLignes } from '../.devcontainer/source/flasher/console.js';
 import {
   etatWebUSB,
   messageErreur,
+  messageRedemarrage,
   resumeProgramme,
   texteEncart,
 } from '../.devcontainer/source/flasher/support.js';
@@ -70,6 +71,13 @@ test('messageErreur : carte débranchée pendant un transfert', () => {
     assert.ok(texte.includes('débranchée'), texte);
     assert.ok(!texte.includes('Failed to execute'), texte);
   }
+});
+
+test('messageRedemarrage : reset() réussi ou DAPLink trop ancien', () => {
+  assert.match(messageRedemarrage(true), /Carte redémarrée/);
+  const ancien = messageRedemarrage(false);
+  assert.match(ancien, /DAPLink est trop ancien/);
+  assert.match(ancien, /Débranchez-la puis rebranchez-la/);
 });
 
 test('messageErreur : erreur inconnue', () => {
