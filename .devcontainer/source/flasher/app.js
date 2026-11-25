@@ -1,6 +1,18 @@
 // Page « Téléverser » : relie le DOM à DAP.js (global DAPjs, vendor/dap.umd.js).
 import { TamponLignes } from './console.js';
-import { etatWebUSB, messageErreur, messageRedemarrage, resumeProgramme, texteEncart } from './support.js';
+import {
+  decisionMiseAJour,
+  estSteami,
+  etatEncartApresDeconnexion,
+  etatWebUSB,
+  lireFirmwareEpingle,
+  lireVersionSteami,
+  messageErreur,
+  messageRedemarrage,
+  resumeProgramme,
+  texteEncart,
+  texteMiseAJour,
+} from './support.js';
 
 const $ = (id) => document.getElementById(id);
 const VENDOR_ID_DAPLINK = 0x0d28;
@@ -14,6 +26,44 @@ let occupe = false;
 let usbPossible = true; // false quand WebUSB est indisponible (encart affiché)
 let lienTelechargement = null; // lien firmware.bin de l'encart, masqué sans programme
 let rendu = false; // un rafraîchissement de la console est déjà planifié
+let epingle = null; // firmware DAPLink embarqué (/daplink/firmware.json), ou null
+let etatMaj = 'masque'; // encart de mise à jour : 'masque' | 'propose' | 'etapes'
+let majReportee = false; // « Plus tard » cliqué : plus d'encart jusqu'au rechargement
+
+function afficherMaj() {
+  $('maj-daplink').hidden = etatMaj === 'masque';
+  $('maj-ouvrir').hidden = etatMaj === 'etapes';
+  $('maj-etapes').hidden = etatMaj !== 'etapes';
+}
+
+async function chargerEpingle() {
+  try {
+    const rep = await fetch('/daplink/firmware.json', { cache: 'no-store' });
+    epingle = rep.ok ? lireFirmwareEpingle(await rep.json()) : null;
+  } catch {
+    epingle = null;
+  }
+}
+
+// Interroge la carte (commande vendeur 0x9F). Toute erreur : pas d'encart.
+// Appelée avant demarrerSerie() : aucun échange DAP concurrent.
+async function verifierDaplink(device, connexion) {
+  await epingleChargee;
+  if (!epingle || !estSteami(device.serialNumber)) return;
+  try {
+    const version = lireVersionSteami(await connexion.send(0x9f));
+    const decision = decisionMiseAJour(version, epingle);
+    if (decision === 'a-jour') {
+      etatMaj = 'masque';
+    } else if (decision === 'ancien' && !majReportee) {
+      $('maj-texte').textContent = texteMiseAJour(epingle.release);
+      if (etatMaj === 'masque') etatMaj = 'propose';
+    }
+    afficherMaj();
+  } catch {
+    // pas d'encart, la connexion continue normalement
+  }
+}
 
 function afficher(texte) {
   $('message').textContent = texte;
@@ -89,6 +139,7 @@ async function connecter() {
     });
     await nouvelle.connect();
     await nouvelle.setSerialBaudrate(BAUDS);
+    await verifierDaplink(device, nouvelle);
     dap = nouvelle;
     $('etat').textContent = 'Carte connectée';
     afficher('');
@@ -176,13 +227,25 @@ $('effacer').addEventListener('click', () => {
   planifierConsole();
 });
 
+$('maj-ouvrir').addEventListener('click', () => {
+  etatMaj = 'etapes';
+  afficherMaj();
+});
+$('maj-plus-tard').addEventListener('click', () => {
+  majReportee = true;
+  etatMaj = 'masque';
+  afficherMaj();
+});
+
 if (afficherEncart()) {
   navigator.usb.addEventListener('disconnect', () => {
+    etatMaj = etatEncartApresDeconnexion(etatMaj);
     if (!dap) return;
     afficher('La carte a été débranchée.');
     etatNonConnectee();
   });
 }
 
+const epingleChargee = chargerEpingle();
 rafraichirBandeau();
 setInterval(rafraichirBandeau, 3000);
