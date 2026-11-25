@@ -101,12 +101,16 @@ export function lireVersionSteami(reponse) {
 export function lireFirmwareEpingle(json) {
   if (!json || typeof json.release !== 'string') return null;
   if (!Number.isInteger(json.numero) || json.numero <= 0) return null;
-  return { release: json.release, numero: json.numero };
+  if (!Number.isInteger(json.date) || json.date < 19700101 || json.date > 99991231) return null;
+  return { release: json.release, numero: json.numero, date: json.date };
 }
 
 export function decisionMiseAJour(version, epingle) {
   if (!version) return 'ancien';
   if (version.numero === 0) return 'dev';
+  // Ordre par (date, numéro) : un redémarrage du run_number GitHub ne doit pas
+  // transformer une régression en « mise à jour ».
+  if (version.date !== epingle.date) return version.date < epingle.date ? 'ancien' : 'a-jour';
   return version.numero < epingle.numero ? 'ancien' : 'a-jour';
 }
 

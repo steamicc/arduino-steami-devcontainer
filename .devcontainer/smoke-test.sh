@@ -37,6 +37,9 @@ FW=/opt/steami/flasher/daplink
   || echec "firmware.json devrait déclarer le SHA256 $DAPLINK_SHA"
 [ "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["release"], d["numero"], type(d["numero"]).__name__)' "$FW/firmware.json")" = "$DAPLINK ${DAPLINK##*.} int" ] \
   || echec "firmware.json devrait déclarer la release $DAPLINK et le numéro entier ${DAPLINK##*.}"
+DAPLINK_DATE=$(printf '%s' "${DAPLINK%.*}" | tr -d '-')
+[ "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["date"], type(d["date"]).__name__)' "$FW/firmware.json")" = "$DAPLINK_DATE int" ] \
+  || echec "firmware.json devrait déclarer la date entière $DAPLINK_DATE"
 [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["taille"])' "$FW/firmware.json")" = "$(stat -c %s "$FW/firmware.bin")" ] \
   || echec "firmware.json devrait déclarer la taille réelle de firmware.bin"
 ok "firmware DAPLink $DAPLINK"

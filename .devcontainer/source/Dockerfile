@@ -96,8 +96,9 @@ RUN mkdir -p /opt/steami/flasher/daplink \
     && curl -fsSL -o /opt/steami/flasher/daplink/firmware.bin \
       "https://github.com/steamicc/DAPLink/releases/download/${STEAMI_DAPLINK_RELEASE}/stm32f103xb_steami32_if_crc.bin" \
     && echo "${STEAMI_DAPLINK_SHA256}  /opt/steami/flasher/daplink/firmware.bin" | sha256sum -c - \
-    && printf '{"release": "%s", "numero": %s, "taille": %s, "sha256": "%s"}\n' \
+    && printf '{"release": "%s", "numero": %s, "date": %s, "taille": %s, "sha256": "%s"}\n' \
       "$STEAMI_DAPLINK_RELEASE" "${STEAMI_DAPLINK_RELEASE##*.}" \
+      "$(printf '%s' "${STEAMI_DAPLINK_RELEASE%.*}" | tr -d '-')" \
       "$(stat -c %s /opt/steami/flasher/daplink/firmware.bin)" "$STEAMI_DAPLINK_SHA256" \
       > /opt/steami/flasher/daplink/firmware.json \
     && chown -R vscode:vscode /opt/steami/flasher/daplink

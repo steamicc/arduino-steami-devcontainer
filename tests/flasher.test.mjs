@@ -143,24 +143,32 @@ test('lireVersionSteami : null si 64 octets sans la marque STM1', () => {
   assert.equal(lireVersionSteami(vue(octets)), null);
 });
 
-test('lireFirmwareEpingle : accepte une release et un numéro entier positif', () => {
-  assert.deepEqual(lireFirmwareEpingle({ release: '2026-11-26.37', numero: 37 }), {
+test('lireFirmwareEpingle : accepte une release, un numéro entier positif et une date AAAAMMJJ', () => {
+  assert.deepEqual(lireFirmwareEpingle({ release: '2026-11-26.37', numero: 37, date: 20261126 }), {
     release: '2026-11-26.37',
     numero: 37,
+    date: 20261126,
   });
   assert.equal(lireFirmwareEpingle(null), null);
   assert.equal(lireFirmwareEpingle({}), null);
-  assert.equal(lireFirmwareEpingle({ release: 'x', numero: 0 }), null);
-  assert.equal(lireFirmwareEpingle({ release: 'x', numero: '37' }), null);
+  assert.equal(lireFirmwareEpingle({ release: 'x', numero: 0, date: 20261126 }), null);
+  assert.equal(lireFirmwareEpingle({ release: 'x', numero: '37', date: 20261126 }), null);
+  assert.equal(lireFirmwareEpingle({ release: 'x', numero: 37 }), null);
+  assert.equal(lireFirmwareEpingle({ release: 'x', numero: 37, date: '20261126' }), null);
+  assert.equal(lireFirmwareEpingle({ release: 'x', numero: 37, date: 1126 }), null);
 });
 
 test('decisionMiseAJour : ancien, dev ou à jour', () => {
-  const epingle = { release: '2026-11-26.37', numero: 37 };
+  const epingle = { release: '2026-11-26.37', numero: 37, date: 20261126 };
   assert.equal(decisionMiseAJour(null, epingle), 'ancien');
   assert.equal(decisionMiseAJour({ numero: 0, date: 0 }, epingle), 'dev');
-  assert.equal(decisionMiseAJour({ numero: 36, date: 1 }, epingle), 'ancien');
-  assert.equal(decisionMiseAJour({ numero: 37, date: 1 }, epingle), 'a-jour');
-  assert.equal(decisionMiseAJour({ numero: 38, date: 1 }, epingle), 'a-jour');
+  assert.equal(decisionMiseAJour({ numero: 36, date: 20261126 }, epingle), 'ancien');
+  assert.equal(decisionMiseAJour({ numero: 37, date: 20261126 }, epingle), 'a-jour');
+  assert.equal(decisionMiseAJour({ numero: 38, date: 20261126 }, epingle), 'a-jour');
+  // date plus ancienne, numéro plus grand : ancien
+  assert.equal(decisionMiseAJour({ numero: 90, date: 20261001 }, epingle), 'ancien');
+  // date plus récente, numéro plus petit (run_number repart de 1) : à jour
+  assert.equal(decisionMiseAJour({ numero: 3, date: 20261201 }, epingle), 'a-jour');
 });
 
 test("etatEncartApresDeconnexion : la déconnexion ne masque jamais l'encart", () => {

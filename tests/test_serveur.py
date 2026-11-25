@@ -75,6 +75,15 @@ class ServeurTest(unittest.TestCase):
         self.assertIn("Téléverser".encode(), corps)
         self.assertEqual(entetes.get("Cache-Control"), "no-store")
 
+    def test_daplink_firmware_json_servi_depuis_le_dossier_flasher(self):
+        os.makedirs(os.path.join(self.flasher, "daplink"))
+        with open(os.path.join(self.flasher, "daplink", "firmware.json"), "wb") as f:
+            f.write(b'{"release": "flasher"}')
+        self.ecrire("firmware.json", b'{"release": "depot"}')
+        statut, _, corps = self.get("/daplink/firmware.json")
+        self.assertEqual(statut, 200)
+        self.assertEqual(corps, b'{"release": "flasher"}')
+
     def test_pas_de_sortie_du_dossier(self):
         self.ecrire("firmware.bin", b"x")
         self.ecrire("firmware.bin.tmp", b"secret")
