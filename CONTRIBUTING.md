@@ -28,7 +28,7 @@ Le workflow `devcontainer.yml` fait la même chose à chaque PR et à chaque pus
 
 ## Versions figées
 
-Toutes les versions sont exactes, jamais une plage : PlatformIO `6.1.19`, plateforme `ststm32@20.0.0`, framework `platformio/framework-arduinoststm32@4.30100.0` (STM32duino 3.1.0, comme l'Arduino IDE), STM32duinoBLE `1.5.0`, le paquet Arduino STeaMi (`steamicc/arduino-steami`) au tag `ARG STEAMI_PAQUET` du Dockerfile, DAP.js `2.3.0` (copie embarquée, sans CDN). Changer l'une d'elles, c'est publier une nouvelle image.
+Toutes les versions sont exactes, jamais une plage : PlatformIO `6.1.19`, plateforme `ststm32@20.0.0`, framework `platformio/framework-arduinoststm32@4.30100.0` (STM32duino 3.1.0, comme l'Arduino IDE), STM32duinoBLE `1.5.0`, le paquet Arduino STeaMi (`steamicc/arduino-steami`) au tag `ARG STEAMI_PAQUET` du Dockerfile, le firmware DAPLink de la carte (`steamicc/DAPLink`, release `AAAA-MM-JJ.N`, embarqué dans l'image) à la release `ARG STEAMI_DAPLINK_RELEASE` du Dockerfile, avec son SHA256 `ARG STEAMI_DAPLINK_SHA256`, DAP.js `2.3.0` (copie embarquée, sans CDN). Changer l'une d'elles, c'est publier une nouvelle image.
 
 ## Publier une nouvelle image
 
@@ -42,6 +42,10 @@ Une version publiée n'est jamais écrasée ni remplacée : les dépôts d'élè
 6. Dans le dépôt modèle `steamicc/arduino-steami-starter`, mettre la nouvelle version dans `.devcontainer/devcontainer.json`. Les dépôts d'élèves déjà créés gardent l'ancienne.
 
 Le résumé du job rappelle ces étapes et signale les configurations qui ne pointent pas encore sur la nouvelle version.
+
+## Mettre à jour le firmware DAPLink
+
+Le firmware DAPLink proposé par la page « Téléverser » est téléchargé à la construction de l'image (`stm32f103xb_steami32_if_crc.bin` de la release `steamicc/DAPLink`), vérifié par SHA256 et copié dans `/opt/steami/flasher/daplink/` avec un `firmware.json` (release, numéro, taille, SHA256). Il est fixé par `ARG STEAMI_DAPLINK_RELEASE` et `ARG STEAMI_DAPLINK_SHA256` dans `.devcontainer/source/Dockerfile` (seule source : le smoke-test les lit). Pour le changer, mettre dans les deux `ARG` une release plus récente `AAAA-MM-JJ.N` et le SHA256 de son fichier (`curl -fsSL <url> | sha256sum`), puis construire l'image, lancer le smoke-test, choisir la version d'image suivante et la publier comme ci-dessus.
 
 ## Mettre à jour le paquet des drivers
 

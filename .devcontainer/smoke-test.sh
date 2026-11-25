@@ -7,6 +7,8 @@ RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB=/opt/steami/libs/STeaMi
 # Le tag du paquet : la ligne « ARG STEAMI_PAQUET= » du Dockerfile, seule source.
 PAQUET=$(sed -n 's/^ARG STEAMI_PAQUET=//p' "$(dirname "${BASH_SOURCE[0]}")/source/Dockerfile")
+DAPLINK=$(sed -n 's/^ARG STEAMI_DAPLINK_RELEASE=//p' "$(dirname "${BASH_SOURCE[0]}")/source/Dockerfile")
+DAPLINK_SHA=$(sed -n 's/^ARG STEAMI_DAPLINK_SHA256=//p' "$(dirname "${BASH_SOURCE[0]}")/source/Dockerfile")
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -24,6 +26,20 @@ ok "PlatformIO 6.1.19"
 grep -qx "version=${PAQUET#v}" "$LIB/library.properties" \
   || echec "library.properties devrait déclarer version=${PAQUET#v}"
 ok "paquet STeaMi $PAQUET"
+
+FW=/opt/steami/flasher/daplink
+[ -n "$DAPLINK" ] && [ -n "$DAPLINK_SHA" ] || echec "ARG STEAMI_DAPLINK_* introuvables dans le Dockerfile"
+[ -s "$FW/firmware.bin" ] || echec "firmware DAPLink absent ou vide : $FW/firmware.bin"
+[ -s "$FW/firmware.json" ] || echec "firmware DAPLink absent ou vide : $FW/firmware.json"
+[ "$(sha256sum "$FW/firmware.bin" | cut -d' ' -f1)" = "$DAPLINK_SHA" ] \
+  || echec "le firmware DAPLink devrait avoir le SHA256 $DAPLINK_SHA"
+[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$FW/firmware.json")" = "$DAPLINK_SHA" ] \
+  || echec "firmware.json devrait déclarer le SHA256 $DAPLINK_SHA"
+[ "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["release"], d["numero"], type(d["numero"]).__name__)' "$FW/firmware.json")" = "$DAPLINK ${DAPLINK##*.} int" ] \
+  || echec "firmware.json devrait déclarer la release $DAPLINK et le numéro entier ${DAPLINK##*.}"
+[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["taille"])' "$FW/firmware.json")" = "$(stat -c %s "$FW/firmware.bin")" ] \
+  || echec "firmware.json devrait déclarer la taille réelle de firmware.bin"
+ok "firmware DAPLink $DAPLINK"
 
 [ -d "$LIB/examples/LIS2MDL/BasicReader" ] \
   || echec "exemple LIS2MDL/BasicReader introuvable"
