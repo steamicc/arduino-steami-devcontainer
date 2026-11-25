@@ -34,6 +34,7 @@ function afficherMaj() {
   $('maj-daplink').hidden = etatMaj === 'masque';
   $('maj-ouvrir').hidden = etatMaj === 'etapes';
   $('maj-etapes').hidden = etatMaj !== 'etapes';
+  $('maj-aide').hidden = etatMaj !== 'etapes';
 }
 
 async function chargerEpingle() {
@@ -45,14 +46,30 @@ async function chargerEpingle() {
   }
 }
 
+// Une mise à jour en cours (« etapes ») garde ses étapes ; seule une proposition se retire.
+function masquerSiPropose() {
+  if (etatMaj === 'propose') {
+    etatMaj = 'masque';
+    afficherMaj();
+  }
+}
+
 // Interroge la carte (commande vendeur 0x9F). Toute erreur : pas d'encart.
 // Appelée avant demarrerSerie() : aucun échange DAP concurrent.
 async function verifierDaplink(device, connexion) {
   await epingleChargee;
-  if (!epingle || !estSteami(device.serialNumber)) return;
+  if (!epingle) return;
+  if (!estSteami(device.serialNumber)) {
+    masquerSiPropose();
+    return;
+  }
   try {
     const version = lireVersionSteami(await connexion.send(0x9f));
     const decision = decisionMiseAJour(version, epingle);
+    if (decision === 'dev') {
+      masquerSiPropose();
+      return;
+    }
     if (decision === 'a-jour') {
       etatMaj = 'masque';
     } else if (decision === 'ancien' && !majReportee) {
