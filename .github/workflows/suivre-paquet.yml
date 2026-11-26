@@ -32,7 +32,14 @@
 #
 # La fusion automatique n'est pas activée non plus si
 # `.devcontainer/source/boards/steami.json` diffère de celui
-# d'arduino-steami-lib au nouveau tag : il faut alors le reporter à la main.
+# d'arduino-steami-lib au nouveau tag : il faut alors le reporter à la main
+# dans la PR. Pour une PR déjà ouverte, la comparaison se fait avec la
+# branche de la PR : une fois les différences reportées, le passage suivant
+# active la fusion automatique.
+#
+# Pour garder la PR ouverte (fusion à la main), la passer en brouillon ou
+# lui mettre l'étiquette « garder-ouverte » : le robot ne réactive alors
+# plus sa fusion automatique.
 #
 # Neutralisé dans les forks, comme les autres workflows.
 # =====================================================================
@@ -137,8 +144,16 @@ jobs:
           fi
           # La définition de la carte est une copie : la fusion automatique
           # n'a lieu que si elle est identique à celle d'arduino-steami-lib au nouveau tag.
+          # PR déjà ouverte : on compare la copie de sa branche, où les
+          # différences ont pu être reportées ; sinon celle de main.
+          locale=.devcontainer/source/boards/steami.json
+          if [ "$action" = existante ]; then
+            git fetch --quiet --depth=1 origin "refs/heads/$branche"
+            git show "FETCH_HEAD:$locale" > "$RUNNER_TEMP/steami-pr.json"
+            locale="$RUNNER_TEMP/steami-pr.json"
+          fi
           if contenu=$(gh api "repos/steamicc/arduino-steami-lib/contents/boards/steami.json?ref=$derniere" --jq .content 2>/dev/null); then
-            if printf '%s' "$contenu" | base64 -d | diff - .devcontainer/source/boards/steami.json; then
+            if printf '%s' "$contenu" | base64 -d | diff - "$locale"; then
               boards=identique
             else
               boards=different
@@ -189,7 +204,7 @@ jobs:
           if [ "$BOARDS" = identique ]; then
             fusion="La fusion automatique (squash) est activée si le dépôt a un ruleset qui exige la CI verte : cette PR est alors fusionnée dès que \`devcontainer.yml\` est au vert. \`.devcontainer/source/boards/steami.json\` est identique à celui d'arduino-steami-lib au nouveau tag."
           else
-            fusion="**Fusion automatique désactivée** : \`.devcontainer/source/boards/steami.json\` diffère de celui d'arduino-steami-lib au nouveau tag (ou n'a pas pu être lu). Reporter les différences dans cette PR (\`gh api \"repos/steamicc/arduino-steami-lib/contents/boards/steami.json?ref=$DERNIERE\" --jq .content | base64 -d | diff - .devcontainer/source/boards/steami.json\`), puis la fusionner à la main une fois les vérifications au vert."
+            fusion="**Fusion automatique désactivée** : \`.devcontainer/source/boards/steami.json\` diffère de celui d'arduino-steami-lib au nouveau tag (ou n'a pas pu être lu). Reporter les différences dans cette PR (\`gh api \"repos/steamicc/arduino-steami-lib/contents/boards/steami.json?ref=$DERNIERE\" --jq .content | base64 -d | diff - .devcontainer/source/boards/steami.json\`) : le passage suivant du robot active alors la fusion automatique (sinon, la fusionner à la main une fois les vérifications au vert)."
           fi
           cat > corps.md <<EOT
           Le paquet Arduino STeaMi a une nouvelle release : \`$DERNIERE\` (l'image utilise \`$ACTUEL\`).
@@ -224,13 +239,23 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$BOARDS" != identique ]; then
-            echo "::warning::PR #$PR : fusion automatique non activée, car .devcontainer/source/boards/steami.json diffère de celui d'arduino-steami-lib $DERNIERE (ou n'a pas pu être lu). Reportez les différences, puis fusionnez la PR à la main."
+            echo "::warning::PR #$PR : fusion automatique non activée, car .devcontainer/source/boards/steami.json diffère de celui d'arduino-steami-lib $DERNIERE (ou n'a pas pu être lu). Reportez les différences dans la PR : le passage suivant du robot activera sa fusion automatique (ou fusionnez-la à la main une fois la CI au vert)."
             exit 0
           fi
-          if [ "$(gh pr view "$PR" --json autoMergeRequest --jq '.autoMergeRequest != null')" = true ]; then
-            echo "La fusion automatique de la PR #$PR est déjà activée."
-            exit 0
-          fi
+          etat=$(gh pr view "$PR" --json autoMergeRequest,isDraft,labels \
+                   --jq 'if .autoMergeRequest != null then "active"
+                         elif .isDraft then "brouillon"
+                         elif any(.labels[]; .name == "garder-ouverte") then "gardee"
+                         else "" end')
+          case "$etat" in
+            active)
+              echo "La fusion automatique de la PR #$PR est déjà activée."
+              exit 0 ;;
+            brouillon|gardee)
+              # Choix d'un mainteneur : on ne réactive pas la fusion automatique.
+              echo "::notice::PR #$PR en brouillon ou avec l'étiquette « garder-ouverte » : fusion automatique laissée désactivée, à fusionner à la main."
+              exit 0 ;;
+          esac
           # Sans check obligatoire sur main, GitHub fusionnerait tout de suite,
           # même avec une CI rouge : on exige donc les deux jobs de devcontainer.yml.
           contextes=$(gh api "repos/$GH_REPO/rules/branches/main" \
