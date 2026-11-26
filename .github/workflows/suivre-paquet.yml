@@ -6,17 +6,33 @@
 # Une fois par jour (et à la demande), le workflow lit la dernière release
 # du paquet. Si elle est plus récente que le tag de l'image et qu'aucune
 # branche ni PR `chore/paquet-<tag>` n'existe, il crée la branche, met à
-# jour l'ARG et ouvre la PR. La suite reste manuelle : fusionner, taguer
-# `devcontainer-AAAA.MM.N`, puis mettre à jour le modèle (CONTRIBUTING.md,
-# « Mettre à jour le paquet des drivers »).
+# jour l'ARG, ouvre la PR et active sa fusion automatique (squash) : elle
+# est fusionnée dès que devcontainer.yml est au vert. Si la PR du robot
+# pour cette version est déjà ouverte, il vérifie seulement sa fusion
+# automatique. La suite reste manuelle : taguer `devcontainer-AAAA.MM.N`,
+# puis mettre à jour le modèle (CONTRIBUTING.md, « Mettre à jour le paquet
+# des drivers »).
 #
-# Une PR créée avec GITHUB_TOKEN ne déclenche pas les workflows
-# `pull_request` : après l'ouverture, on lance devcontainer.yml à la main
-# sur la branche (workflow_dispatch).
+# Les écritures (push, PR, fusion) passent par un jeton de l'App de
+# l'organisation, celle qu'utilise déjà steamicc/arduino-steami-lib : une
+# PR ouverte avec ce jeton déclenche devcontainer.yml normalement, sans
+# approbation manuelle, ce que GITHUB_TOKEN ne permet pas. GITHUB_TOKEN ne
+# sert qu'aux lectures.
 #
-# Prérequis : l'organisation doit autoriser « Allow GitHub Actions to create
-# and approve pull requests » (Settings > Actions > General), sinon
-# l'ouverture de la PR échoue.
+# Prérequis, à régler une fois :
+#   - les secrets RELEASE_APP_ID et RELEASE_APP_SECRET (dépôt ou
+#     organisation), sinon le workflow échoue en le disant ;
+#   - l'App installée sur ce dépôt, avec Contents et Pull requests en
+#     écriture ;
+#   - « Allow auto-merge » et le squash autorisés (Settings > General) ;
+#   - un ruleset « CI verte avant fusion » sur main, qui exige les checks
+#     « tests des commandes » et « build & smoke-test ». Sans lui, la
+#     fusion automatique fusionnerait même une CI rouge : le workflow
+#     ne l'active pas et laisse la PR à fusionner à la main.
+#
+# La fusion automatique n'est pas activée non plus si
+# `.devcontainer/source/boards/steami.json` diffère de celui
+# d'arduino-steami-lib au nouveau tag : il faut alors le reporter à la main.
 #
 # Neutralisé dans les forks, comme les autres workflows.
 # =====================================================================
@@ -27,10 +43,10 @@ on:
     - cron: "17 5 * * *"
   workflow_dispatch:
 
+# GITHUB_TOKEN en lecture seule : les écritures utilisent le jeton de l'App.
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
+  pull-requests: read
 
 # Une seule exécution à la fois : deux lancements simultanés créeraient la même branche.
 concurrency:
@@ -45,11 +61,47 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
+      - name: Vérifie les secrets de l'App
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+          APP_CLE: ${{ secrets.RELEASE_APP_SECRET }}
+        run: |
+          manquants=""
+          [ -n "$APP_ID" ] || manquants="$manquants RELEASE_APP_ID"
+          [ -n "$APP_CLE" ] || manquants="$manquants RELEASE_APP_SECRET"
+          if [ -n "$manquants" ]; then
+            echo "::error::Secret(s) manquant(s) :$manquants. Ajoutez RELEASE_APP_ID et RELEASE_APP_SECRET (Settings > Secrets and variables > Actions, ou au niveau de l'organisation) et installez sur ce dépôt l'App de l'organisation utilisée par arduino-steami-lib : sans elle, le robot ne peut ni ouvrir la PR ni activer sa fusion automatique."
+            exit 1
+          fi
+
+      # Sans `owner` ni `repositories`, le jeton ne vaut que pour ce dépôt.
+      - name: Jeton de l'App (ce dépôt seulement)
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          # L'App ID convient : l'action traite `client-id` et `app-id` (déprécié) de la même façon.
+          client-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_SECRET }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Explique l'échec du jeton
+        if: failure() && steps.app.outcome == 'failure'
+        run: |
+          echo "::error::Impossible d'obtenir un jeton de l'App avec RELEASE_APP_ID et RELEASE_APP_SECRET. Vérifiez que l'App est installée sur steamicc/arduino-steami-devcontainer avec Contents et Pull requests en écriture, et que la clé privée est bien celle de cette App."
+          exit 1
+
+      # Le jeton de l'App reste dans la configuration git : le push l'utilise.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app.outputs.token }}
 
       - name: Compare la dernière release au tag de l'image
         id: comparaison
+        env:
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
           set -euo pipefail
           actuel=$(sed -n 's/^ARG STEAMI_PAQUET=//p' .devcontainer/source/Dockerfile)
@@ -64,61 +116,135 @@ jobs:
           plus_recente=$(printf '%s\n%s\n' "${actuel#v}" "${derniere#v}" | sort -V | tail -n1)
           if [ "$actuel" = "$derniere" ] || [ "v$plus_recente" != "$derniere" ]; then
             echo "L'image est à jour."
-            echo "nouvelle=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Branche ou PR (ouverte ou fermée) déjà là : on ne recommence pas.
           branche="chore/paquet-$derniere"
-          if git ls-remote --exit-code --heads origin "$branche" >/dev/null 2>&1 \
+          # PR du robot déjà ouverte pour cette version (branche de ce dépôt,
+          # ouverte par l'App) : on ne vérifie que sa fusion automatique.
+          pr=$(gh pr list --state open --head "$branche" --json number,author,isCrossRepository \
+                 | jq -r --arg auteur "app/$APP_SLUG" \
+                     '[.[] | select((.isCrossRepository | not) and .author.login == $auteur) | .number][0] // empty')
+          if [ -n "$pr" ]; then
+            echo "La PR #$pr ($branche) est déjà ouverte : vérification de sa fusion automatique."
+            action=existante
+          # Sinon, branche ou PR (ouverte ou fermée) déjà là : on ne recommence pas.
+          elif git ls-remote --exit-code --heads origin "$branche" >/dev/null 2>&1 \
              || [ -n "$(gh pr list --state all --head "$branche" --json number --jq '.[].number')" ]; then
             echo "$branche existe déjà : rien à faire."
-            echo "nouvelle=false" >> "$GITHUB_OUTPUT"
             exit 0
+          else
+            action=nouvelle
           fi
+          # La définition de la carte est une copie : la fusion automatique
+          # n'a lieu que si elle est identique à celle d'arduino-steami-lib au nouveau tag.
+          if contenu=$(gh api "repos/steamicc/arduino-steami-lib/contents/boards/steami.json?ref=$derniere" --jq .content 2>/dev/null); then
+            if printf '%s' "$contenu" | base64 -d | diff - .devcontainer/source/boards/steami.json; then
+              boards=identique
+            else
+              boards=different
+            fi
+          else
+            boards=inconnu
+          fi
+          echo "boards/steami.json par rapport à arduino-steami-lib $derniere : $boards"
           {
-            echo "nouvelle=true"
+            echo "action=$action"
+            echo "pr=$pr"
             echo "actuel=$actuel"
             echo "derniere=$derniere"
             echo "branche=$branche"
+            echo "boards=$boards"
           } >> "$GITHUB_OUTPUT"
 
       - name: Crée la branche et met à jour l'ARG
-        if: steps.comparaison.outputs.nouvelle == 'true'
+        if: steps.comparaison.outputs.action == 'nouvelle'
         env:
-          ACTUEL: ${{ steps.comparaison.outputs.actuel }}
           DERNIERE: ${{ steps.comparaison.outputs.derniere }}
           BRANCHE: ${{ steps.comparaison.outputs.branche }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Commit attribué à l'App, comme la PR.
+          id_bot=$(gh api "users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${id_bot}+${APP_SLUG}[bot]@users.noreply.github.com"
           git switch -c "$BRANCHE"
           sed -i "s/^ARG STEAMI_PAQUET=.*/ARG STEAMI_PAQUET=$DERNIERE/" .devcontainer/source/Dockerfile
           grep -qx "ARG STEAMI_PAQUET=$DERNIERE" .devcontainer/source/Dockerfile
           git commit -am "chore: paquet arduino-steami $DERNIERE"
           git push origin "$BRANCHE"
 
-      - name: Ouvre la PR et lance les vérifications
-        if: steps.comparaison.outputs.nouvelle == 'true'
+      # Ouverte avec le jeton de l'App : devcontainer.yml se déclenche sur la PR.
+      - name: Ouvre la PR
+        id: ouverture
+        if: steps.comparaison.outputs.action == 'nouvelle'
         env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           ACTUEL: ${{ steps.comparaison.outputs.actuel }}
           DERNIERE: ${{ steps.comparaison.outputs.derniere }}
           BRANCHE: ${{ steps.comparaison.outputs.branche }}
+          BOARDS: ${{ steps.comparaison.outputs.boards }}
         run: |
           set -euo pipefail
+          if [ "$BOARDS" = identique ]; then
+            fusion="La fusion automatique (squash) est activée si le dépôt a un ruleset qui exige la CI verte : cette PR est alors fusionnée dès que \`devcontainer.yml\` est au vert. \`.devcontainer/source/boards/steami.json\` est identique à celui d'arduino-steami-lib au nouveau tag."
+          else
+            fusion="**Fusion automatique désactivée** : \`.devcontainer/source/boards/steami.json\` diffère de celui d'arduino-steami-lib au nouveau tag (ou n'a pas pu être lu). Reporter les différences dans cette PR (\`gh api \"repos/steamicc/arduino-steami-lib/contents/boards/steami.json?ref=$DERNIERE\" --jq .content | base64 -d | diff - .devcontainer/source/boards/steami.json\`), puis la fusionner à la main une fois les vérifications au vert."
+          fi
           cat > corps.md <<EOT
           Le paquet Arduino STeaMi a une nouvelle release : \`$DERNIERE\` (l'image utilise \`$ACTUEL\`).
           https://github.com/steamicc/arduino-steami/releases/tag/$DERNIERE
 
           Cette PR change seulement \`ARG STEAMI_PAQUET\` dans \`.devcontainer/source/Dockerfile\`. Le smoke-test (devcontainer.yml) construit l'image et compile les exemples de référence sans réseau.
 
-          La suite, à la main (CONTRIBUTING.md, « Mettre à jour le paquet des drivers ») :
-          1. une fois les vérifications au vert, comparer \`.devcontainer/source/boards/steami.json\` avec celui d'arduino-steami-lib au nouveau tag et reporter les différences : \`gh api "repos/steamicc/arduino-steami-lib/contents/boards/steami.json?ref=<tag>" --jq .content | base64 -d | diff - .devcontainer/source/boards/steami.json\` ; puis fusionner cette PR ;
-          2. mettre à jour la version de l'image (\`exemples/devcontainer.json\` et \`.devcontainer/devcontainer.json\`), puis taguer \`devcontainer-AAAA.MM.N\` ;
-          3. mettre à jour le modèle \`arduino-steami-starter\` avec la nouvelle version de l'image.
+          $fusion
+
+          La suite, à la main, une fois la PR fusionnée (CONTRIBUTING.md, « Mettre à jour le paquet des drivers ») :
+          1. mettre à jour la version de l'image (\`exemples/devcontainer.json\` et \`.devcontainer/devcontainer.json\`), puis taguer \`devcontainer-AAAA.MM.N\` ;
+          2. mettre à jour le modèle \`arduino-steami-starter\` avec la nouvelle version de l'image.
           EOT
-          gh pr create --base main --head "$BRANCHE" \
+          url=$(gh pr create --base main --head "$BRANCHE" \
             --title "chore: paquet arduino-steami $DERNIERE" \
-            --body-file corps.md
-          # La PR créée avec GITHUB_TOKEN ne déclenche pas pull_request.
-          gh workflow run devcontainer.yml --ref "$BRANCHE"
+            --body-file corps.md)
+          echo "PR ouverte : $url"
+          numero="${url##*/}"
+          if ! printf '%s' "$numero" | grep -Eq '^[0-9]+$'; then
+            echo "::error::Numéro de PR introuvable dans « $url »"
+            exit 1
+          fi
+          echo "pr=$numero" >> "$GITHUB_OUTPUT"
+
+      - name: Active la fusion automatique
+        if: steps.comparaison.outputs.action != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ steps.ouverture.outputs.pr || steps.comparaison.outputs.pr }}
+          BOARDS: ${{ steps.comparaison.outputs.boards }}
+          DERNIERE: ${{ steps.comparaison.outputs.derniere }}
+        run: |
+          set -euo pipefail
+          if [ "$BOARDS" != identique ]; then
+            echo "::warning::PR #$PR : fusion automatique non activée, car .devcontainer/source/boards/steami.json diffère de celui d'arduino-steami-lib $DERNIERE (ou n'a pas pu être lu). Reportez les différences, puis fusionnez la PR à la main."
+            exit 0
+          fi
+          if [ "$(gh pr view "$PR" --json autoMergeRequest --jq '.autoMergeRequest != null')" = true ]; then
+            echo "La fusion automatique de la PR #$PR est déjà activée."
+            exit 0
+          fi
+          # Sans check obligatoire sur main, GitHub fusionnerait tout de suite,
+          # même avec une CI rouge : on exige donc les deux jobs de devcontainer.yml.
+          contextes=$(gh api "repos/$GH_REPO/rules/branches/main" \
+            --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | unique | join("\n")')
+          manquants=""
+          for check in "tests des commandes" "build & smoke-test"; do
+            printf '%s\n' "$contextes" | grep -qxF "$check" || manquants="$manquants « $check »"
+          done
+          if [ -n "$manquants" ]; then
+            echo "::warning::PR #$PR : fusion automatique non activée, car aucune règle de main n'exige les checks$manquants. Créez d'abord un ruleset « CI verte avant fusion » sur main (Settings > Rules > Rulesets, « Require status checks to pass ») avec « tests des commandes » et « build & smoke-test », sinon la PR serait fusionnée même avec une CI rouge. En attendant, fusionnez la PR à la main une fois la CI au vert."
+            exit 0
+          fi
+          if ! gh pr merge "$PR" --auto --squash; then
+            echo "::error::Impossible d'activer la fusion automatique de la PR #$PR. Vérifiez « Allow auto-merge » et « Allow squash merging » (Settings > General > Pull Requests), et que l'App a Contents et Pull requests en écriture."
+            exit 1
+          fi
+          echo "Fusion automatique (squash) activée sur la PR #$PR : elle sera fusionnée dès que la CI sera au vert."

@@ -13,8 +13,9 @@ on:
   push:
     branches:
       - main
-  # Pour la PR ouverte par suivre-paquet.yml : une PR créée avec GITHUB_TOKEN
-  # ne déclenche pas pull_request, le workflow est lancé à la main sur sa branche.
+  # Lancement à la main sur une branche (Actions, « Run workflow »). La PR de
+  # suivre-paquet.yml n'en a pas besoin : ouverte avec le jeton de l'App, elle
+  # déclenche pull_request.
   workflow_dispatch:
 
 permissions:
