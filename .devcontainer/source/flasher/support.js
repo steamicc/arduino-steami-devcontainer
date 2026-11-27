@@ -114,7 +114,8 @@ export function decisionMiseAJour(version, epingle) {
   return version.numero < epingle.numero ? 'ancien' : 'a-jour';
 }
 
-// La déconnexion (reset de la carte pendant la mise à jour) ne masque jamais l'encart.
+// La déconnexion (câble débranché ou passage en MAINTENANCE pendant la mise à
+// jour) ne masque jamais l'encart.
 export function etatEncartApresDeconnexion(etat) {
   return etat;
 }
