@@ -45,11 +45,11 @@
   </div>
   <ol id="maj-etapes" hidden>
     <li><a class="bouton" href="/daplink/firmware.bin" download="stm32f103xb_steami32_if_crc.bin">Télécharger le firmware</a></li>
-    <li>Créez un fichier vide nommé <code>START_BL.ACT</code> sur le lecteur de la carte (STEAMI) : la carte redémarre et un lecteur MAINTENANCE apparaît.</li>
+    <li>Débranchez le câble USB de la carte, puis rebranchez-le en maintenant le bouton Reset enfoncé : un lecteur MAINTENANCE apparaît à la place du lecteur de la carte (STEAMI). Relâchez alors le bouton.</li>
     <li>Copiez le fichier téléchargé sur le lecteur MAINTENANCE, puis attendez le retour du lecteur de la carte.</li>
     <li>Reconnectez la carte avec le bouton « Connecter la carte ».</li>
   </ol>
-  <p id="maj-aide" hidden><a href="https://wiki.steami.cc/docs/software/arduino/codespace#le-bouton-redémarrer-la-carte-ne-fonctionne-pas" target="_blank" rel="noopener">Si le lecteur MAINTENANCE n'apparaît pas</a></p>
+  <p id="maj-aide" hidden>Si le lecteur MAINTENANCE n'apparaît pas, créez un fichier vide nommé <code>START_BL.ACT</code> sur le lecteur de la carte (STEAMI) : la carte redémarre sur le lecteur MAINTENANCE. <a href="https://wiki.steami.cc/docs/software/arduino/codespace#le-bouton-redémarrer-la-carte-ne-fonctionne-pas" target="_blank" rel="noopener">Plus d'aide sur le wiki</a></p>
 </div>
 
 <progress id="progression" max="1" value="0"></progress>
