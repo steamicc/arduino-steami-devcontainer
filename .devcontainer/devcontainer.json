@@ -7,7 +7,7 @@
   //
   // Tag épinglé, jamais `latest` : un tag publié ne change plus de contenu.
   // Pour en changer, voir « Publier une nouvelle image » dans CONTRIBUTING.md.
-  "image": "ghcr.io/steamicc/arduino-steami-devcontainer:2026.11.9",
+  "image": "ghcr.io/steamicc/arduino-steami-devcontainer:2026.11.10",
   // Répété ici et non seulement dans l'image : Codespaces choisit la machine
   // avant de télécharger l'image.
   // Ni forwardPorts ni postStartCommand ici : ce dépôt n'a pas de
