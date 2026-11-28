@@ -3,8 +3,10 @@
 # (steamicc/arduino-steami), installé dans l'image au tag fixé par
 # `ARG STEAMI_PAQUET` du Dockerfile.
 #
-# Une fois par jour (et à la demande), le workflow lit la dernière release
-# du paquet. Si elle est plus récente que le tag de l'image et qu'aucune
+# Une fois par jour, à la demande et après chaque publication du paquet
+# (déclenché par publish-arduino-package.yml d'arduino-steami-lib, sans
+# entrée), le workflow lit la dernière release du paquet
+# (/releases/latest). Si elle est plus récente que le tag de l'image et qu'aucune
 # branche ni PR `chore/paquet-<tag>` n'existe, il crée la branche, met à
 # jour l'ARG, ouvre la PR et active sa fusion automatique (squash) : elle
 # est fusionnée dès que devcontainer.yml est au vert. Si la PR du robot
@@ -29,13 +31,21 @@
 # Prérequis, à régler une fois :
 #   - les secrets RELEASE_APP_ID et RELEASE_APP_SECRET (dépôt ou
 #     organisation), sinon le workflow échoue en le disant ;
-#   - l'App installée sur ce dépôt, avec Contents et Pull requests en
-#     écriture ;
+#   - l'App installée sur ce dépôt, avec Contents, Pull requests et Actions
+#     en écriture (Actions : la garde relance un check exigé rouge) ;
 #   - « Allow auto-merge » et le squash autorisés (Settings > General) ;
 #   - un ruleset « CI verte avant fusion » sur main, qui exige les checks
-#     « tests des commandes » et « build & smoke-test ». Sans lui, la
-#     fusion automatique fusionnerait même une CI rouge : le workflow
-#     ne l'active pas et laisse la PR à fusionner à la main.
+#     « tests des commandes » et « build & smoke-test », sans acteur de
+#     contournement. Sans lui, la fusion automatique fusionnerait même une
+#     CI rouge : le workflow ne l'active pas et laisse la PR à fusionner à
+#     la main.
+#
+# La fusion automatique passe par la garde commune
+# .github/scripts/garde-fusion-auto.sh (copie à l'identique dans les dépôts
+# steamicc, empreinte vérifiée par tests/garde-fusion-auto.bats) : jamais
+# pour une PR venue d'un fork ou ouverte par un autre auteur que le robot.
+# Si elle est déjà activée et qu'un check exigé est rouge, la garde le
+# relance une fois, puis fait échouer le run du robot s'il reste rouge.
 #
 # La fusion automatique n'est pas activée non plus si
 # `.devcontainer/source/boards/steami.json` diffère de celui
@@ -100,11 +110,13 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_SECRET }}
           permission-contents: write
           permission-pull-requests: write
+          # La garde de fusion auto relance une fois un check exigé rouge (gh run rerun).
+          permission-actions: write
 
       - name: Explique l'échec du jeton
         if: failure() && steps.app.outcome == 'failure'
         run: |
-          echo "::error::Impossible d'obtenir un jeton de l'App avec RELEASE_APP_ID et RELEASE_APP_SECRET. Vérifiez que l'App est installée sur steamicc/arduino-steami-devcontainer avec Contents et Pull requests en écriture, et que la clé privée est bien celle de cette App."
+          echo "::error::Impossible d'obtenir un jeton de l'App avec RELEASE_APP_ID et RELEASE_APP_SECRET. Vérifiez que l'App est installée sur steamicc/arduino-steami-devcontainer avec Contents, Pull requests et Actions en écriture, et que la clé privée est bien celle de cette App."
           exit 1
 
       # Le jeton de l'App reste dans la configuration git : le push l'utilise.
@@ -304,10 +316,16 @@ jobs:
             gh pr close "$n" --delete-branch --comment "Superseded by #$PR."
           done
 
+      # La garde commune (.github/scripts/garde-fusion-auto.sh, copie à l'identique,
+      # tests/garde-fusion-auto.bats) refuse un fork ou un autre auteur que le
+      # robot, exige les deux jobs de devcontainer.yml sur la branche par défaut
+      # sans contournement possible, respecte brouillon et « garder-ouverte »,
+      # relance une fois un check exigé rouge, puis fait échouer le run.
       - name: Active la fusion automatique
         if: steps.comparaison.outputs.action != ''
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
           PR: ${{ steps.ouverture.outputs.pr || steps.comparaison.outputs.pr }}
           BOARDS: ${{ steps.comparaison.outputs.boards }}
           DERNIERE: ${{ steps.comparaison.outputs.derniere }}
@@ -317,34 +335,4 @@ jobs:
             echo "::warning::PR #$PR : fusion automatique non activée, car .devcontainer/source/boards/steami.json diffère de celui d'arduino-steami-lib $DERNIERE (ou n'a pas pu être lu). Reportez les différences dans la PR : le passage suivant du robot activera sa fusion automatique (ou fusionnez-la à la main une fois la CI au vert)."
             exit 0
           fi
-          etat=$(gh pr view "$PR" --json autoMergeRequest,isDraft,labels \
-                   --jq 'if .autoMergeRequest != null then "active"
-                         elif .isDraft then "brouillon"
-                         elif any(.labels[]; .name == "garder-ouverte") then "gardee"
-                         else "" end')
-          case "$etat" in
-            active)
-              echo "La fusion automatique de la PR #$PR est déjà activée."
-              exit 0 ;;
-            brouillon|gardee)
-              # Choix d'un mainteneur : on ne réactive pas la fusion automatique.
-              echo "::notice::PR #$PR en brouillon ou avec l'étiquette « garder-ouverte » : fusion automatique laissée désactivée, à fusionner à la main."
-              exit 0 ;;
-          esac
-          # Sans check obligatoire sur main, GitHub fusionnerait tout de suite,
-          # même avec une CI rouge : on exige donc les deux jobs de devcontainer.yml.
-          contextes=$(gh api "repos/$GH_REPO/rules/branches/main" \
-            --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | unique | join("\n")')
-          manquants=""
-          for check in "tests des commandes" "build & smoke-test"; do
-            printf '%s\n' "$contextes" | grep -qxF "$check" || manquants="$manquants « $check »"
-          done
-          if [ -n "$manquants" ]; then
-            echo "::warning::PR #$PR : fusion automatique non activée, car aucune règle de main n'exige les checks$manquants. Créez d'abord un ruleset « CI verte avant fusion » sur main (Settings > Rules > Rulesets, « Require status checks to pass ») avec « tests des commandes » et « build & smoke-test », sinon la PR serait fusionnée même avec une CI rouge. En attendant, fusionnez la PR à la main une fois la CI au vert."
-            exit 0
-          fi
-          if ! gh pr merge "$PR" --auto --squash; then
-            echo "::error::Impossible d'activer la fusion automatique de la PR #$PR. Vérifiez « Allow auto-merge » et « Allow squash merging » (Settings > General > Pull Requests), et que l'App a Contents et Pull requests en écriture."
-            exit 1
-          fi
-          echo "Fusion automatique (squash) activée sur la PR #$PR : elle sera fusionnée dès que la CI sera au vert."
+          bash .github/scripts/garde-fusion-auto.sh "$GITHUB_REPOSITORY" "$PR" "$APP_SLUG" "tests des commandes" "build & smoke-test"

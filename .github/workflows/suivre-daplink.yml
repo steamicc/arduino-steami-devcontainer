@@ -28,18 +28,22 @@
 # `devcontainer-AAAA.MM.N` qui publie l'image (CONTRIBUTING.md, « Publier
 # une nouvelle image »). Rien d'autre à brancher.
 #
-# Fusion automatique (squash), seulement si :
-#   - les règles de main exigent « tests des commandes » et
+# Fusion automatique (squash), par la garde commune
+# .github/scripts/garde-fusion-auto.sh (copie à l'identique dans les dépôts
+# steamicc, empreinte vérifiée par tests/garde-fusion-auto.bats), seulement si :
+#   - la PR vient de ce dépôt et a été ouverte par le robot ;
+#   - les règles de la branche par défaut exigent « tests des commandes » et
 #     « build & smoke-test » ;
 #   - aucun ruleset qui porte ces vérifications ne laisse l'acteur du jeton
 #     les contourner (`current_user_can_bypass` vaut `never`) : sinon GitHub
 #     fusionnerait tout de suite, même avec une CI rouge ;
-#   - la PR vient de ce dépôt, a été ouverte par le robot, n'est pas en
-#     brouillon et n'a pas déjà la fusion automatique.
+#   - la PR n'est ni en brouillon ni étiquetée `garder-ouverte`.
+# Si la fusion automatique est déjà activée et qu'un check exigé est rouge,
+# la garde le relance une fois, puis fait échouer le run du robot.
 # Le ruleset d'organisation (Default_Ruleset) n'est jamais lu ni modifié.
 #
 # Prérequis : secrets RELEASE_APP_ID et RELEASE_APP_SECRET ; App installée
-# sur ce dépôt (Contents et Pull requests en écriture) ; « Allow auto-merge »
+# sur ce dépôt (Contents, Pull requests et Actions en écriture) ; « Allow auto-merge »
 # et le squash autorisés ; ruleset « CI verte avant fusion » sur main, sans
 # acteur de contournement.
 #
@@ -95,11 +99,13 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_SECRET }}
           permission-contents: write
           permission-pull-requests: write
+          # La garde de fusion auto relance une fois un check exigé rouge (gh run rerun).
+          permission-actions: write
 
       - name: Explique l'échec du jeton
         if: failure() && steps.app.outcome == 'failure'
         run: |
-          echo "::error::Impossible d'obtenir un jeton de l'App avec RELEASE_APP_ID et RELEASE_APP_SECRET. Vérifiez que l'App est installée sur steamicc/arduino-steami-devcontainer avec Contents et Pull requests en écriture, et que la clé privée est bien celle de cette App."
+          echo "::error::Impossible d'obtenir un jeton de l'App avec RELEASE_APP_ID et RELEASE_APP_SECRET. Vérifiez que l'App est installée sur steamicc/arduino-steami-devcontainer avec Contents, Pull requests et Actions en écriture, et que la clé privée est bien celle de cette App."
           exit 1
 
       # Le jeton de l'App reste dans la configuration git : le push l'utilise.
@@ -287,6 +293,11 @@ jobs:
             gh pr close "$n" --delete-branch --comment "Superseded by #$PR."
           done
 
+      # La garde commune (.github/scripts/garde-fusion-auto.sh, copie à l'identique,
+      # tests/garde-fusion-auto.bats) refuse un fork ou un autre auteur que le
+      # robot, exige les deux jobs de devcontainer.yml sur la branche par défaut
+      # sans contournement possible, respecte brouillon et « garder-ouverte »,
+      # relance une fois un check exigé rouge, puis fait échouer le run.
       - name: Active la fusion automatique
         if: steps.comparaison.outputs.action != ''
         env:
@@ -295,67 +306,4 @@ jobs:
           PR: ${{ steps.ouverture.outputs.pr || steps.comparaison.outputs.pr }}
         run: |
           set -euo pipefail
-          if ! [[ "$PR" =~ ^[0-9]+$ ]]; then
-            echo "::error::Numéro de PR introuvable (« $PR »)"
-            exit 1
-          fi
-          # Garde-fou : jamais de fusion automatique pour une PR venue d'un fork
-          # ou ouverte par quelqu'un d'autre que le robot.
-          etat=$(gh pr view "$PR" --json isCrossRepository,author,isDraft,labels,autoMergeRequest)
-          if jq -e .isCrossRepository <<<"$etat" >/dev/null; then
-            echo "::error::La PR #$PR vient d'un fork : fusion automatique refusée."
-            exit 1
-          fi
-          auteur=$(jq -r .author.login <<<"$etat")
-          if [ "$auteur" != "app/$APP_SLUG" ] && [ "$auteur" != "${APP_SLUG}[bot]" ]; then
-            echo "::error::La PR #$PR a été ouverte par $auteur, pas par le robot : fusion automatique refusée."
-            exit 1
-          fi
-          # Sans check obligatoire sur main, « gh pr merge --auto » fusionnerait
-          # tout de suite, même avec une CI rouge : on exige les deux jobs de
-          # devcontainer.yml, portés par un ruleset qu'on ne peut pas contourner.
-          regles=$(gh api "repos/$GH_REPO/rules/branches/main")
-          contextes=$(jq -r '[.[] | select(.type == "required_status_checks")
-                              | .parameters.required_status_checks[].context] | unique | join("\n")' <<<"$regles")
-          manquants=""
-          for check in "tests des commandes" "build & smoke-test"; do
-            printf '%s\n' "$contextes" | grep -qxF "$check" || manquants="$manquants « $check »"
-          done
-          if [ -n "$manquants" ]; then
-            echo "::warning::PR #$PR : fusion automatique non activée, car aucune règle de main n'exige les checks$manquants. Créez d'abord un ruleset « CI verte avant fusion » sur main (Settings > Rules > Rulesets, « Require status checks to pass ») avec « tests des commandes » et « build & smoke-test », sinon la PR serait fusionnée même avec une CI rouge. En attendant, fusionnez la PR à la main une fois la CI au vert."
-            exit 0
-          fi
-          # Seuls les rulesets qui portent les checks exigés comptent (jamais le
-          # ruleset d'organisation Default_Ruleset). Si l'acteur du jeton peut les
-          # contourner, ou si on ne peut pas le savoir, pas de fusion automatique.
-          ids=$(jq -r '[.[] | select(.type == "required_status_checks")
-                        | "\(.ruleset_source_type) \(.ruleset_id)"] | unique | .[]' <<<"$regles")
-          while read -r source id; do
-            [ -n "$id" ] || continue
-            if [ "$source" != Repository ]; then
-              echo "::warning::PR #$PR : fusion automatique non activée, car les checks exigés viennent d'un ruleset $source ($id), dont le contournement n'est pas vérifié ici."
-              exit 0
-            fi
-            contournement=$(gh api "repos/$GH_REPO/rulesets/$id" --jq .current_user_can_bypass 2>/dev/null || echo inconnu)
-            if [ "$contournement" != never ]; then
-              echo "::warning::PR #$PR : fusion automatique non activée, car l'acteur du jeton peut contourner le ruleset $id (current_user_can_bypass : $contournement). GitHub fusionnerait tout de suite. Retirez les acteurs de contournement du ruleset « CI verte avant fusion », ou fusionnez la PR à la main une fois la CI au vert."
-              exit 0
-            fi
-          done <<<"$ids"
-          if jq -e .isDraft <<<"$etat" >/dev/null; then
-            echo "::notice::PR #$PR en brouillon : fusion automatique laissée désactivée."
-            exit 0
-          fi
-          if jq -e 'any(.labels[]; .name == "garder-ouverte")' <<<"$etat" >/dev/null; then
-            echo "::notice::PR #$PR avec l'étiquette « garder-ouverte » : fusion automatique laissée désactivée, à fusionner à la main."
-            exit 0
-          fi
-          if jq -e '.autoMergeRequest != null' <<<"$etat" >/dev/null; then
-            echo "La fusion automatique de la PR #$PR est déjà activée."
-            exit 0
-          fi
-          if ! gh pr merge "$PR" --auto --squash; then
-            echo "::error::Impossible d'activer la fusion automatique de la PR #$PR. Vérifiez « Allow auto-merge » et « Allow squash merging » (Settings > General > Pull Requests), et que l'App a Contents et Pull requests en écriture."
-            exit 1
-          fi
-          echo "Fusion automatique (squash) activée sur la PR #$PR : elle sera fusionnée dès que la CI sera au vert."
+          bash .github/scripts/garde-fusion-auto.sh "$GITHUB_REPOSITORY" "$PR" "$APP_SLUG" "tests des commandes" "build & smoke-test"
