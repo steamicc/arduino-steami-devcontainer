@@ -40,6 +40,7 @@ permissions:
 jobs:
   tests:
     name: tests des commandes
+    timeout-minutes: 15
     # Ne pas tourner dans les forks.
     if: github.repository == 'steamicc/arduino-steami-devcontainer'
     runs-on: ubuntu-latest
@@ -62,6 +63,9 @@ jobs:
 
   image:
     name: build & smoke-test
+    # Plafond : une compilation qui dérive échoue au lieu de tourner 6 h (durée
+    # normale : 20 à 45 min selon le nombre d'exemples).
+    timeout-minutes: 60
     if: github.repository == 'steamicc/arduino-steami-devcontainer'
     runs-on: ubuntu-latest
     steps:
