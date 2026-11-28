@@ -22,11 +22,11 @@
 #     `.devcontainer/source/` que sa branche n'a pas, le robot met la
 #     branche à jour avec main (`gh pr update-branch`, jeton de l'App),
 #     ce qui relance devcontainer.yml ; un échec de cette mise à jour
-#     est signalé par un avertissement, avec la réponse de GitHub : un
-#     conflit, ou des changements de `.github/workflows/` arrivés sur
-#     main depuis la création de la branche, que le jeton de l'App ne
-#     peut pas pousser (il ne demande pas la permission Workflows). La
-#     branche est alors à mettre à jour à la main (« Update branch »).
+#     est signalé par un avertissement, avec la réponse de GitHub (un
+#     conflit, le plus souvent ; le jeton demande la permission Workflows
+#     pour pousser une fusion qui apporte des changements de
+#     `.github/workflows/`). La branche est alors à mettre à jour à la
+#     main (« Update branch »).
 #     Sinon, si un check exigé de la PR est en échec, un avertissement
 #     (et le résumé du job) signale que la publication est bloquée :
 #     relancer les jobs, mettre la branche à jour avec main si main a
@@ -119,6 +119,10 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_SECRET }}
           permission-contents: write
           permission-pull-requests: write
+          # Workflows : `gh pr update-branch` pousse une fusion de main dans la
+          # branche de la PR d'image ; si main a reçu des changements de
+          # .github/workflows/, GitHub refuse ce push sans cette permission.
+          permission-workflows: write
 
       - name: Explique l'échec du jeton
         if: failure() && steps.app.outcome == 'failure'
@@ -353,7 +357,7 @@ jobs:
               else
                 # Sur une ligne : une commande ::warning:: s'arrête au premier saut de ligne.
                 sortie=$(printf '%s' "$sortie" | tr '\n' ' ')
-                msg="PR #$PR : impossible de mettre $nom à jour avec main. Réponse de GitHub : $sortie. Causes probables : un conflit, ou des changements de .github/workflows/ arrivés sur main depuis la création de la branche, que le jeton de l'App ne peut pas pousser (il n'a pas la permission Workflows). Sa CI ne construit pas les derniers changements de l'image et n'est pas relancée : la mettre à jour à la main (« Update branch », ou fusion de main dans $nom) : $url"
+                msg="PR #$PR : impossible de mettre $nom à jour avec main. Réponse de GitHub : $sortie. Cause probable : un conflit entre la branche et main. Sa CI ne construit pas les derniers changements de l'image et n'est pas relancée : la mettre à jour à la main (« Update branch », ou fusion de main dans $nom) : $url"
                 echo "::warning::$msg"
                 {
                   echo "## PR d'image non mise à jour"
