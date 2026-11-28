@@ -9,9 +9,10 @@
 # jour l'ARG, ouvre la PR et active sa fusion automatique (squash) : elle
 # est fusionnée dès que devcontainer.yml est au vert. Si la PR du robot
 # pour cette version est déjà ouverte, il vérifie seulement sa fusion
-# automatique. La suite reste manuelle : taguer `devcontainer-AAAA.MM.N`,
-# puis mettre à jour le modèle (CONTRIBUTING.md, « Mettre à jour le paquet
-# des drivers »).
+# automatique. À la fusion, `tag-image.yml` pose `devcontainer-AAAA.MM.N`
+# et `devcontainer-publish` publie l'image. Restent à la main : recopier la
+# version publiée dans les devcontainer.json, puis mettre à jour le modèle
+# (CONTRIBUTING.md, « Mettre à jour le paquet des drivers »).
 #
 # Les écritures (push, PR, fusion) passent par un jeton de l'App de
 # l'organisation, celle qu'utilise déjà steamicc/arduino-steami-lib : une
@@ -214,8 +215,8 @@ jobs:
 
           $fusion
 
-          La suite, à la main, une fois la PR fusionnée (CONTRIBUTING.md, « Mettre à jour le paquet des drivers ») :
-          1. mettre à jour la version de l'image (\`exemples/devcontainer.json\` et \`.devcontainer/devcontainer.json\`), puis taguer \`devcontainer-AAAA.MM.N\` ;
+          À la fusion, \`tag-image.yml\` pose \`devcontainer-AAAA.MM.N\` et \`devcontainer-publish\` publie l'image. La suite, à la main (CONTRIBUTING.md, « Mettre à jour le paquet des drivers ») :
+          1. une fois l'image publiée, mettre sa version dans \`exemples/devcontainer.json\` et \`.devcontainer/devcontainer.json\` ;
           2. mettre à jour le modèle \`arduino-steami-starter\` avec la nouvelle version de l'image.
           EOT
           url=$(gh pr create --base main --head "$BRANCHE" \

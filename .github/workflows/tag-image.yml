@@ -1,0 +1,125 @@
+# =====================================================================
+# tag-image.yml : pose le tag `devcontainer-AAAA.MM.N` à la fusion sur
+# main quand la fusion change l'image. Le push du tag lance
+# devcontainer-publish.yml, qui construit, teste et publie l'image.
+#
+# Le numéro se calcule à la fusion, pas à l'ouverture de la PR : deux PR
+# ouvertes en même temps ne prennent donc pas le même numéro.
+#
+# À chaque push sur main (et à la demande, sur main seulement) :
+#   1. le dernier tag `devcontainer-*` est lu (regles_image.py derniere) ;
+#   2. les chemins changés depuis ce tag (git diff --no-renames) passent
+#      par regles_image.py tag : seules les entrées de l'image comptent
+#      (`.devcontainer/source/`, dont le Dockerfile, et
+#      `.devcontainer/smoke-test.sh`). La PR qui recopie la version dans
+#      les devcontainer.json ne relance donc pas d'image ;
+#   3. si elles ont changé (ou s'il n'y a encore aucun tag), la version
+#      suivante est calculée sur les tags existants (N+1 dans le mois
+#      courant, sinon 1) et le tag est poussé sans --force : un tag
+#      existant fait échouer le push, aucun tag n'est jamais réécrit.
+#
+# Relancer le workflow sur le même commit ne pose pas de second tag :
+# l'image est alors inchangée depuis le tag qu'il vient de poser.
+# Les exécutions sont sérialisées, sans annulation. Si plusieurs pushes
+# attendent, GitHub ne garde que le dernier : il compare au dernier tag,
+# donc il voit aussi les changements des pushes sautés.
+#
+# Le tag est poussé avec le jeton de l'App de l'organisation (celle de
+# suivre-paquet.yml) : un tag poussé avec GITHUB_TOKEN ne déclencherait
+# pas devcontainer-publish.yml.
+#
+# Prérequis : les secrets RELEASE_APP_ID et RELEASE_APP_SECRET, et l'App
+# installée sur ce dépôt avec Contents et Workflows en écriture.
+#
+# Réparation à la main : pousser soi-même le tag, ou lancer
+# devcontainer-publish (Actions, « Run workflow ») avec la version.
+#
+# Neutralisé dans les forks, comme les autres workflows.
+# =====================================================================
+name: tag-image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# GITHUB_TOKEN en lecture seule : le push du tag utilise le jeton de l'App.
+permissions:
+  contents: read
+
+# Une seule exécution à la fois : deux fusions rapprochées prendraient le même numéro.
+concurrency:
+  group: tag-image
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: tag de l'image
+    # Ne pas tourner dans les forks, et ne taguer que main (workflow_dispatch
+    # peut être lancé sur une autre branche).
+    if: github.repository == 'steamicc/arduino-steami-devcontainer' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      # Sans `owner` ni `repositories`, le jeton ne vaut que pour ce dépôt.
+      - name: Jeton de l'App (ce dépôt seulement)
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          # L'App ID convient : l'action traite `client-id` et `app-id` (déprécié) de la même façon.
+          client-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_SECRET }}
+          permission-contents: write
+          # GitHub peut refuser à une App de pousser une référence qui
+          # contient des workflows sans cette permission.
+          permission-workflows: write
+
+      # Tout l'historique et les tags : le diff part du dernier tag. Le jeton
+      # de l'App reste dans la configuration git : le push du tag l'utilise.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - name: L'image a-t-elle changé ?
+        id: changement
+        run: |
+          set -euo pipefail
+          derniere=$(git tag --list 'devcontainer-*' | python3 .github/scripts/regles_image.py derniere)
+          if [ -z "$derniere" ]; then
+            echo "Aucun tag devcontainer-* : première image."
+            change=true
+          else
+            # --no-renames : un renommage compte pour ses deux chemins, l'ancien
+            # et le nouveau. core.quotePath=false : chemins non ASCII en clair.
+            change=$(git -c core.quotePath=false diff --no-renames --name-only "devcontainer-$derniere" "$GITHUB_SHA" \
+                       | python3 .github/scripts/regles_image.py tag)
+            if [ "$change" = false ]; then
+              echo "Image inchangée depuis devcontainer-$derniere"
+            else
+              echo "Entrées de l'image changées depuis devcontainer-$derniere : nouvelle image."
+            fi
+          fi
+          echo "change=$change" >> "$GITHUB_OUTPUT"
+
+      - name: Calcule la version
+        id: version
+        if: steps.changement.outputs.change == 'true'
+        run: |
+          set -euo pipefail
+          version=$(git tag --list 'devcontainer-*' | python3 .github/scripts/regles_image.py prochaine "$(date -u +%Y.%m)")
+          echo "Version suivante : $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Sans --force : si le tag existe déjà, le push échoue.
+      - name: Pose le tag
+        if: steps.changement.outputs.change == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # `devcontainer-` seul serait un tag valide, qui lancerait devcontainer-publish.
+          [ -n "$VERSION" ] || { echo "::error::Version vide : aucun tag posé."; exit 1; }
+          git tag "devcontainer-$VERSION" "$GITHUB_SHA"
+          git push origin "refs/tags/devcontainer-$VERSION"
+          echo "::notice::devcontainer-$VERSION posé : devcontainer-publish va publier l'image"
