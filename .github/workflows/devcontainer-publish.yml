@@ -11,11 +11,18 @@
 # L'image est construite à partir de .devcontainer/source/ et n'est
 # publiée que si le smoke-test passe dans le conteneur.
 #
-# Déclencheurs, tous deux manuels :
-#   - push d'un tag git `devcontainer-AAAA.MM.N` : fonctionne depuis
-#     n'importe quelle branche, donc avant de fusionner ;
-#   - workflow_dispatch avec la version en paramètre : uniquement une fois
-#     ce fichier présent sur la branche par défaut.
+# Déclencheurs :
+#   - push d'un tag git `devcontainer-AAAA.MM.N` : d'habitude posé par le
+#     robot publier-image.yml, avec le jeton de l'App, à la fusion de la
+#     PR « chore: image AAAA.MM.N » (un tag poussé avec GITHUB_TOKEN ne
+#     déclencherait pas ce workflow). En secours, il peut être poussé à la
+#     main, depuis n'importe quelle branche, donc avant de fusionner ;
+#   - workflow_dispatch avec la version en paramètre, à la main :
+#     uniquement une fois ce fichier présent sur la branche par défaut.
+#
+# Le robot suivre-image du modèle arduino-steami-starter suit ensuite la
+# nouvelle version de lui-même (CONTRIBUTING.md, « Publier une nouvelle
+# image »).
 #
 # Jamais de tag `latest`, et une version publiée n'est jamais écrasée :
 # les dépôts d'élèves déjà créés pointent dessus.
@@ -140,7 +147,7 @@ jobs:
               echo "**À faire** : mettre cette version dans$retard."
             fi
             echo
-            echo "Puis, dans le dépôt modèle \`steamicc/arduino-steami-starter\`, mettre cette version dans \`.devcontainer/devcontainer.json\`. Les dépôts d'élèves déjà créés gardent l'ancienne."
+            echo "Une fois l'image publiée, le robot \`suivre-image\` du dépôt modèle \`steamicc/arduino-steami-starter\` ouvre sa PR vers cette version (chaque jour, ou à la demande). Les dépôts d'élèves déjà créés gardent l'ancienne."
             echo
             echo "À la première publication, rendre le paquet **public** (Packages → Package settings → Change visibility), puis vérifier qu'un \`docker pull $IMAGE:$VERSION\` fonctionne sans être connecté, comme un élève."
           } >> "$GITHUB_STEP_SUMMARY"
