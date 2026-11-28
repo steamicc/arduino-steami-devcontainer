@@ -81,11 +81,12 @@ steami-compiler lis2mdl/basicreader >"$TMP/cmd.log" 2>&1 \
 ok "steami-compiler lis2mdl/basicreader (nom réel : LIS2MDL/BasicReader)"
 
 # Les exemples choisis (voir STEAMI_SMOKE_EXEMPLES), tels que steami-exemples
-# les liste, compilés en parallèle (un par cœur), chacun dans son propre dossier
-# de travail PlatformIO (PLATFORMIO_WORKSPACE_DIR : .pio/build, libdeps) pour
-# que les compilations ne se marchent pas dessus. La sortie de chaque
-# compilation va dans son journal ; celui d'un exemple en échec est affiché en
-# bloc à la fin. Chaque compilation affiche sa durée, puis les 10 plus lentes
+# les liste, compilés l'un après l'autre dans le même dossier de travail
+# PlatformIO : les objets des bibliothèques sont compilés une fois et réutilisés
+# (~11 s par exemple, contre ~83 s dans un dossier vide, et chaque compilation
+# utilise déjà tous les cœurs : le parallèle n'a pas aidé). La fin du journal
+# d'un exemple en échec est affichée. Chaque compilation affiche sa durée, puis
+# les 10 plus lentes
 # (tests/smoke-test.bats extrait ce bloc entre les deux repères : les garder).
 # DEBUT boucle des exemples
 # Une ligne par exemple : le premier de chaque composant, plus le premier
@@ -106,15 +107,6 @@ selection_representative() {
   LC_ALL=C sort -o "$TMP/selection" "$TMP/selection"
 }
 
-# Compile l'exemple $2 (numéro $1) ; écrit « durée statut » dans $TMP/ex/$1.res.
-compiler_exemple() {
-  local debut=$SECONDS statut=0
-  PLATFORMIO_WORKSPACE_DIR="$TMP/pio/$1" PLATFORMIO_SRC_DIR="$LIB/examples/$2" \
-    pio run -e steami >"$TMP/ex/$1.log" 2>&1 || statut=$?
-  printf '%s %s\n' "$((SECONDS - debut))" "$statut" >"$TMP/ex/$1.res"
-  [ "$statut" -ne 0 ] || printf '%s %ss\n' "$2" "$((SECONDS - debut))"
-}
-
 if [ "$EXEMPLES" != aucun ]; then
   steami-exemples >"$TMP/liste" || echec "steami-exemples a échoué"
   total=$(grep -c . "$TMP/liste")
@@ -125,29 +117,17 @@ if [ "$EXEMPLES" != aucun ]; then
     selection_representative "$TMP/liste"
   fi
   nb=$(grep -c . "$TMP/selection")
-  PARALLELE=${PARALLELE:-$(nproc 2>/dev/null || echo 2)}
-  echo "Exemples ($EXEMPLES) : $nb exemples sur $total, $PARALLELE en parallèle"
+  echo "Exemples ($EXEMPLES) : $nb exemples sur $total"
   echo "Exemples compilés : $(paste -sd' ' "$TMP/selection")"
-  mkdir -p "$TMP/ex" "$TMP/pio"
-  export TMP LIB
-  export -f compiler_exemple
-  # Le numéro de ligne sert de nom aux journaux et aux dossiers de travail.
-  awk '{ print NR, $0 }' "$TMP/selection" \
-    | xargs -P "$PARALLELE" -n 2 bash -c 'compiler_exemple "$@"' _
   : >"$TMP/durees"
-  echecs=0
-  i=0
   while read -r ex; do
-    i=$((i + 1))
-    read -r secs statut 2>/dev/null <"$TMP/ex/$i.res" || { secs=0; statut=absent; }
-    if [ "$statut" != 0 ]; then
-      { echo "--- $ex : fin du journal de compilation ---"; tail -30 "$TMP/ex/$i.log" 2>/dev/null
-        echo "✗ compilation de $ex"; } >&2
-      echecs=$((echecs + 1))
-    fi
+    debut=$SECONDS
+    PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 </dev/null \
+      || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
+    secs=$((SECONDS - debut))
+    printf '%s %ss\n' "$ex" "$secs"
     printf '%s %s\n' "$secs" "$ex" >>"$TMP/durees"
   done <"$TMP/selection"
-  [ "$echecs" -eq 0 ] || echec "$echecs exemple(s) sur $nb ne compilent pas (journaux ci-dessus)"
   echo "Les 10 exemples les plus lents :"
   sort -rn "$TMP/durees" | head -10 | while read -r secs ex; do
     printf '  %ss %s\n' "$secs" "$ex"

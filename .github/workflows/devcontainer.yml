@@ -64,8 +64,8 @@ jobs:
   image:
     name: build & smoke-test
     # Plafond : une compilation qui dérive échoue au lieu de tourner 6 h (la
-    # construction de l'image domine ; la boucle représentative des exemples,
-    # en parallèle, prend quelques minutes).
+    # construction de l'image domine ; la boucle représentative des exemples
+    # en série, prend quelques minutes).
     timeout-minutes: 60
     if: github.repository == 'steamicc/arduino-steami-devcontainer'
     runs-on: ubuntu-latest
@@ -124,7 +124,7 @@ jobs:
 
       # Même image, sans réseau : compiler ne doit rien télécharger. Utilisateur vscode,
       # comme dans le Codespace. Seule boucle des exemples du run : l'ensemble
-      # représentatif par défaut (un par composant, plus un BLE, en parallèle).
+      # représentatif par défaut (un par composant, plus un BLE, en série).
       - name: Smoke-test hors ligne dans le conteneur
         if: steps.filtre.outputs.construire != 'false'
         run: |
