@@ -122,7 +122,7 @@ if [ "$EXEMPLES" != aucun ]; then
   : >"$TMP/durees"
   while read -r ex; do
     debut=$SECONDS
-    PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 \
+    PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 </dev/null \
       || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
     secs=$((SECONDS - debut))
     printf '%s %ss\n' "$ex" "$secs"

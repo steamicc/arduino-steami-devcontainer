@@ -50,6 +50,8 @@ faux_paquet_50() {
 faux_pio() {
   cat > "$BIN/pio" <<'PIO'
 #!/bin/bash
+# Un vrai pio peut lire son entrée standard : ne pas lui laisser la liste.
+cat >/dev/null
 ex=${PLATFORMIO_SRC_DIR#"$FAUX_LIB"/examples/}
 [ -z "${PLATFORMIO_WORKSPACE_DIR:-}" ] || { echo "dossier de travail propre : $PLATFORMIO_WORKSPACE_DIR" >&2; exit 4; }
 echo "$ex" >> "$JOURNAL/compiles"
@@ -186,6 +188,14 @@ APPEL
   [[ "$stderr" != *"dossier de travail propre"* ]]
   [ "$(sort -n "$BATS_TEST_TMPDIR/journal/simultanes" | tail -1)" -eq 1 ]
   [ "$(wc -l < "$BATS_TEST_TMPDIR/journal/compiles")" -ge 50 ]
+}
+
+@test "pio qui lit son entrée standard ne vole pas la liste : tous les exemples sont compilés" {
+  faux_paquet_50 BLE/BleA:ble
+  lancer_boucle tous
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$BATS_TEST_TMPDIR/journal/compiles")" -eq 51 ]
+  [[ "$output" == *"✅ 51 exemples compilés"* ]]
 }
 
 @test "un exemple en échec → script en échec, message et fin du journal" {
