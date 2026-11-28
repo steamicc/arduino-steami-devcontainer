@@ -1,22 +1,34 @@
 # =====================================================================
-# devcontainer.yml : vérifie à chaque PR et à chaque push que les
-# commandes steami-* passent leurs tests, que l'image se construit et que
-# le smoke-test réussit dans le conteneur, sans réseau.
+# devcontainer.yml : vérifie à chaque PR que les commandes steami-*
+# passent leurs tests et, si la PR peut changer l'image, que l'image se
+# construit et que le smoke-test réussit dans le conteneur, sans réseau.
 #
-# Rien n'est publié ici : la publication est dans devcontainer-publish.yml.
+# Une PR qui ne touche aucune entrée de l'image (docs, tests, autres
+# workflows, PR « chore: image » du robot publier-image, qui ne change que
+# les deux devcontainer.json) ne construit rien : « build & smoke-test »
+# finit vert en quelques secondes avec la notice « construction sautée ».
+# La liste des entrées et la règle sont dans .github/scripts/image-concernee.sh ;
+# dans le doute (liste des changements impossible), l'image est construite.
+# Les deux jobs tournent toujours, sous les mêmes noms : le ruleset « CI
+# verte avant fusion » les exige sur chaque PR.
+#
+# Rien n'est construit sur main : devcontainer-publish.yml reconstruit,
+# teste et publie l'image au tag. Rien n'est publié ici.
 # Neutralisé dans les forks : le build de l'image est long et inutile.
 # =====================================================================
 name: devcontainer
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
-  # Lancement à la main sur une branche (Actions, « Run workflow »). La PR de
-  # suivre-paquet.yml n'en a pas besoin : ouverte avec le jeton de l'App, elle
-  # déclenche pull_request.
+  # Lancement à la main sur une branche (Actions, « Run workflow ») : construit
+  # toujours l'image. La PR de suivre-paquet.yml n'en a pas besoin : ouverte
+  # avec le jeton de l'App, elle déclenche pull_request.
   workflow_dispatch:
+
+# Un nouveau push sur une PR annule le run précédent de cette PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -49,26 +61,66 @@ jobs:
     if: github.repository == 'steamicc/arduino-steami-devcontainer'
     runs-on: ubuntu-latest
     steps:
+      # Tout l'historique : le filtre compare la PR à son ancêtre commun avec la base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # Écrit construire=true ou construire=false. Dans le doute (script en
+      # échec, sortie inattendue), true : les étapes de construction
+      # tournent dès que la sortie n'est pas exactement false.
+      - name: L'image est-elle concernée ?
+        id: filtre
+        env:
+          EVENEMENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          construire=true
+          if [ "$EVENEMENT" = pull_request ]; then
+            if ! construire=$(.github/scripts/image-concernee.sh "$BASE_SHA" "$HEAD_SHA"); then
+              echo "::warning::Le filtre a échoué : l'image est construite."
+              construire=true
+            fi
+          else
+            echo "Lancement $EVENEMENT : l'image est construite."
+          fi
+          case "$construire" in
+            true | false) ;;
+            *)
+              echo "::warning::Sortie « $construire » inattendue du filtre : l'image est construite."
+              construire=true ;;
+          esac
+          echo "construire=$construire" >> "$GITHUB_OUTPUT"
 
       # Même chemin que la publication (devcontainer-publish.yml) : devcontainers/ci
       # construit l'image, la démarre et lance le smoke-test, mais ne pousse rien.
       # Une erreur propre à ce chemin (uid de vscode, droits sur /opt) apparaît
-      # donc dans la PR et non au moment de publier.
+      # donc dans la PR et non au moment de publier. Sans la boucle des
+      # exemples : l'étape hors ligne la lance, une seule fois par run.
       - name: Construit l'image et lance le smoke-test (chemin de publication)
+        if: steps.filtre.outputs.construire != 'false'
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           configFile: .devcontainer/source/devcontainer.json
           imageName: steami-devcontainer
           imageTag: dev
           runCmd: .devcontainer/smoke-test.sh
+          env: |
+            STEAMI_SMOKE_EXEMPLES=aucun
           push: never
           skipContainerUserIdUpdate: true
 
       # Même image, sans réseau : compiler ne doit rien télécharger. Utilisateur vscode,
-      # comme dans le Codespace.
+      # comme dans le Codespace. Seule boucle complète des exemples du run.
       - name: Smoke-test hors ligne dans le conteneur
+        if: steps.filtre.outputs.construire != 'false'
         run: |
           docker run --rm --network none -u vscode \
             -v "$PWD":/work:ro -w /work \
             steami-devcontainer:dev .devcontainer/smoke-test.sh
+
+      - name: Image non concernée
+        if: steps.filtre.outputs.construire == 'false'
+        run: |
+          echo "::notice::aucune entrée de l'image modifiée : construction sautée"
