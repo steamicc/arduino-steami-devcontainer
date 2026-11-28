@@ -410,7 +410,7 @@ jobs:
 
           Cette PR change seulement la version de l'image, \`$VERSION\`, dans \`.devcontainer/devcontainer.json\` et \`exemples/devcontainer.json\`. Le smoke-test (devcontainer.yml) construit l'image et compile les exemples de référence sans réseau.
 
-          La fusion automatique (squash) est activée si le dépôt a un ruleset qui exige la CI verte : cette PR est alors fusionnée dès que \`devcontainer.yml\` est au vert. Pour la fusionner à la main, la passer en brouillon ou lui mettre l'étiquette « garder-ouverte ».
+          La fusion automatique (squash) est activée par la garde commune si un ruleset du dépôt exige la CI verte sans acteur de contournement : cette PR est alors fusionnée dès que \`devcontainer.yml\` est au vert. Un check exigé rouge est relancé une fois par le robot. Pour la fusionner à la main, la passer en brouillon ou lui mettre l'étiquette « garder-ouverte ».
 
           La suite est automatique, une fois la PR fusionnée :
           1. le robot \`publier-image\` pose le tag \`devcontainer-$VERSION\` sur le commit fusionné ;
