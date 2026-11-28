@@ -6,12 +6,12 @@
 #
 #   publier-image.sh decider <commit> <AAAA.MM>
 #       Lit l'état du dépôt (tags devcontainer-*, version citée par les
-#       deux devcontainer.json au commit, changements de
-#       .devcontainer/source) et écrit une seule ligne :
+#       deux devcontainer.json au commit, changements de l'image, voir
+#       IMAGE_CHEMINS) et écrit une seule ligne :
 #         tag <V>      les deux fichiers citent <V>, qui n'a pas de tag
 #                      et vient après le dernier tag (sinon sortie 2) ;
-#         pr <V>       .devcontainer/source a changé depuis le dernier
-#                      tag : <V> est la version suivante ;
+#         pr <V>       l'image a changé depuis le dernier tag : <V> est
+#                      la version suivante ;
 #         rien <raison>  sinon.
 #       <AAAA.MM> est le mois courant (UTC). La version suivante ne
 #       recule jamais : si ce mois est antérieur à celui du dernier tag,
@@ -22,10 +22,30 @@
 #       répertoire courant, et rien d'autre.
 #
 #   publier-image.sh retard <tete> <commit>
-#       Écrit « oui » si .devcontainer/source a changé entre
+#       Écrit « oui » si l'image a changé entre
 #       git merge-base <tete> <commit> et <commit> : <commit> (main) a des
 #       changements de l'image que la branche de tête <tete> (la PR
 #       d'image ouverte) n'a pas encore. Écrit « non » sinon.
+#
+#   publier-image.sh changements <de> <a>
+#       Liste (git log --oneline) les commits de <de>..<a> qui changent
+#       l'image : le corps de la PR d'image.
+#
+#   publier-image.sh fermee <slug-app>
+#       Lit sur l'entrée le JSON de
+#       `gh pr list --state all --head chore/image-<V> --json number,state,author,isCrossRepository`
+#       et écrit le numéro de la PR d'image fermée sans fusion que le robot
+#       peut remplacer : parmi les PR depuis une branche de ce dépôt, aucune
+#       n'est ouverte ni fusionnée, et la plus récente est fermée et a été
+#       ouverte par l'App (app/<slug-app> ou <slug-app>[bot]). N'écrit rien
+#       sinon (aucune PR, PR ouverte ou fusionnée, dernière PR d'une
+#       personne) : le workflow garde alors « rien à faire ».
+#
+#   publier-image.sh auteur <base> <tete> <courriel>
+#       Écrit « oui » si <base>..<tete> a au moins un commit et que tous
+#       ont pour auteur <courriel> (le bot de l'App) : la branche <tete>
+#       n'a que des commits du robot et peut être supprimée. Écrit « non »
+#       sinon (une personne y a poussé, ou rien de propre à la branche).
 #
 # Lancer à la racine du dépôt. Le script ne fait ni commit, ni push, ni
 # appel réseau : le workflow agit d'après sa sortie.
@@ -36,7 +56,20 @@ set -euo pipefail
 
 IMAGE=ghcr.io/steamicc/arduino-steami-devcontainer
 FICHIERS=(.devcontainer/devcontainer.json exemples/devcontainer.json)
-SOURCE=.devcontainer/source
+# Ce qui change l'image publiée (pathspec git) : tout .devcontainer/ sauf
+# .devcontainer/devcontainer.json, qui ne fait que citer l'image. C'est
+# `source/` (contexte de construction), `smoke-test.sh` (le test qui
+# décide de la publication) et tout fichier qui y serait ajouté. Même
+# règle que la partie .devcontainer/ de entree_image dans
+# .github/scripts/image-concernee.sh (accord vérifié par
+# tests/publier-image.bats). Ce script-là compte aussi des fichiers qui
+# ne donnent pas de nouvelle version : ceux de la CI (devcontainer.yml,
+# .github/actions/, image-concernee.sh), qui ne changent pas l'image, et
+# .gitattributes et .gitmodules (hors .devcontainer/, déjà compté), qui
+# peuvent la changer au checkout (fins de ligne, filtres) : publier alors
+# par « En secours, à la main » (CONTRIBUTING.md).
+IMAGE_CHEMINS=(.devcontainer/ ':(exclude).devcontainer/devcontainer.json')
+IMAGE_DESCRIPTION=".devcontainer/ hors .devcontainer/devcontainer.json"
 FORMAT_VERSION='^[0-9]{4}\.[0-9]{2}\.[0-9]+$'
 FORMAT_MOIS='^[0-9]{4}\.[0-9]{2}$'
 # Ligne qui cite la version : "image": "ghcr.io/…:<V>",
@@ -52,6 +85,9 @@ usage() {
 Usage : publier-image.sh decider <commit> <AAAA.MM>
         publier-image.sh remplacer <AAAA.MM.N>
         publier-image.sh retard <tete> <commit>
+        publier-image.sh changements <de> <a>
+        publier-image.sh fermee <slug-app>
+        publier-image.sh auteur <base> <tete> <courriel>
 EOT
     exit 2
 }
@@ -105,9 +141,9 @@ decider() {
     fi
 
     local rc=0
-    git diff --quiet "devcontainer-$dernier" "$commit" -- "$SOURCE" || rc=$?
+    git diff --quiet "devcontainer-$dernier" "$commit" -- "${IMAGE_CHEMINS[@]}" || rc=$?
     case $rc in
-        0) echo "rien aucun changement de $SOURCE depuis devcontainer-$dernier"; return ;;
+        0) echo "rien aucun changement de l'image ($IMAGE_DESCRIPTION) depuis devcontainer-$dernier"; return ;;
         1) ;;
         *) erreur "git diff a échoué entre devcontainer-$dernier et $commit." ;;
     esac
@@ -150,7 +186,7 @@ retard() {
     done
     base=$(git merge-base "$tete" "$commit") || erreur "aucun ancêtre commun entre $tete et $commit."
     local rc=0
-    git diff --quiet "$base" "$commit" -- "$SOURCE" || rc=$?
+    git diff --quiet "$base" "$commit" -- "${IMAGE_CHEMINS[@]}" || rc=$?
     case $rc in
         0) echo non ;;
         1) echo oui ;;
@@ -158,9 +194,48 @@ retard() {
     esac
 }
 
+changements() {
+    [ $# -eq 2 ] || usage
+    local de=$1 a=$2 c
+    for c in "$de" "$a"; do
+        git rev-parse -q --verify "$c^{commit}" >/dev/null || erreur "commit « $c » introuvable."
+    done
+    git log --oneline "$de..$a" -- "${IMAGE_CHEMINS[@]}" || erreur "git log a échoué entre $de et $a."
+}
+
+fermee() {
+    [ $# -eq 1 ] && [ -n "$1" ] || usage
+    local slug=$1
+    # .state vaut OPEN, CLOSED (fermée sans fusion) ou MERGED.
+    jq -r --arg a1 "app/$slug" --arg a2 "${slug}[bot]" '
+        [.[] | select(.isCrossRepository | not)] as $prs
+        | if ($prs | length) == 0 or any($prs[]; .state == "OPEN" or .state == "MERGED") then empty
+          else ($prs | max_by(.number)) as $d
+            | if $d.state == "CLOSED" and ($d.author.login == $a1 or $d.author.login == $a2)
+              then $d.number else empty end
+          end' || erreur "liste des PR illisible (JSON de gh pr list attendu sur l'entrée)."
+}
+
+auteur() {
+    [ $# -eq 3 ] && [ -n "$3" ] || usage
+    local base=$1 tete=$2 courriel=$3 c auteurs
+    for c in "$base" "$tete"; do
+        git rev-parse -q --verify "$c^{commit}" >/dev/null || erreur "commit « $c » introuvable."
+    done
+    auteurs=$(git log --format=%ae "$base..$tete") || erreur "git log a échoué entre $base et $tete."
+    if [ -n "$auteurs" ] && ! printf '%s\n' "$auteurs" | grep -qvxF "$courriel"; then
+        echo oui
+    else
+        echo non
+    fi
+}
+
 case "${1:-}" in
     decider) shift; decider "$@" ;;
     remplacer) shift; remplacer "$@" ;;
     retard) shift; retard "$@" ;;
+    changements) shift; changements "$@" ;;
+    fermee) shift; fermee "$@" ;;
+    auteur) shift; auteur "$@" ;;
     *) usage ;;
 esac
