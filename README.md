@@ -45,3 +45,4 @@ Les tests, la construction locale, la publication d'une nouvelle image et la mis
 ## Licence
 
 Voir [LICENSE](LICENSE). DAP.js 2.3.0 est embarqué dans `flasher/vendor` avec sa licence.
+
