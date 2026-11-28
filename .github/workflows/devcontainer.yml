@@ -4,9 +4,13 @@
 # construit et que le smoke-test réussit dans le conteneur, sans réseau.
 #
 # Une PR qui ne touche aucune entrée de l'image (docs, tests, autres
-# workflows, PR « chore: image » du robot publier-image, qui ne change que
-# les deux devcontainer.json) ne construit rien : « build & smoke-test »
-# finit vert en quelques secondes avec la notice « construction sautée ».
+# workflows, dont devcontainer-publish.yml, que ce workflow ne lance pas)
+# ne construit rien : « build & smoke-test » finit vert en quelques
+# secondes avec la notice « construction sautée ». La PR « chore: image »
+# du robot publier-image (branche chore/image-*) construit toujours, même
+# si elle ne change que les deux devcontainer.json : c'est le dernier
+# contrôle de l'état exact qui va recevoir le tag (le ruleset n'exige pas
+# une branche à jour, deux changements de l'image peuvent s'y combiner).
 # La liste des entrées et la règle sont dans .github/scripts/image-concernee.sh ;
 # dans le doute (liste des changements impossible), l'image est construite.
 # Les deux jobs tournent toujours, sous les mêmes noms : le ruleset « CI
@@ -75,10 +79,12 @@ jobs:
           EVENEMENT: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Branche de la PR : chore/image-* (robot publier-image) construit toujours.
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           construire=true
           if [ "$EVENEMENT" = pull_request ]; then
-            if ! construire=$(.github/scripts/image-concernee.sh "$BASE_SHA" "$HEAD_SHA"); then
+            if ! construire=$(.github/scripts/image-concernee.sh "$BASE_SHA" "$HEAD_SHA" "$HEAD_REF"); then
               echo "::warning::Le filtre a échoué : l'image est construite."
               construire=true
             fi

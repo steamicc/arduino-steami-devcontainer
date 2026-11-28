@@ -44,9 +44,20 @@ commit() {
   git commit -q --allow-empty -m "${1:-change}"
 }
 
-# Lance le filtre entre la base et la tête de la PR.
+# Lance le filtre entre la base et la tête de la PR ($1 : branche de tête, facultative).
 decider() {
-  run --separate-stderr "$SCRIPT" "$BASE" "$(git rev-parse HEAD)"
+  if [ $# -ge 1 ]; then
+    run --separate-stderr "$SCRIPT" "$BASE" "$(git rev-parse HEAD)" "$1"
+  else
+    run --separate-stderr "$SCRIPT" "$BASE" "$(git rev-parse HEAD)"
+  fi
+}
+
+# Ce que fait la PR « chore: image » du robot publier-image.
+changer_version() {
+  echo '{"image": "x:2026.11.13"}' > .devcontainer/devcontainer.json
+  echo '{"image": "x:2026.11.13"}' > exemples/devcontainer.json
+  commit "chore: image 2026.11.13"
 }
 
 @test "README seul → pas de construction" {
@@ -64,6 +75,40 @@ decider() {
   decider
   [ "$status" -eq 0 ]
   [ "$output" = false ]
+}
+
+@test "PR du robot (branche chore/image-*) → construction, même sans entrée de l'image" {
+  changer_version
+  decider chore/image-2026.11.13
+  [ "$status" -eq 0 ]
+  [ "$output" = true ]
+  [[ "$stderr" == *"chore/image-2026.11.13"* ]]
+}
+
+@test "mêmes fichiers depuis une autre branche → pas de construction" {
+  changer_version
+  decider docs/version-image
+  [ "$status" -eq 0 ]
+  [ "$output" = false ]
+}
+
+@test "branche de tête vide → règle des chemins seule" {
+  changer_version
+  decider ""
+  [ "$status" -eq 0 ]
+  [ "$output" = false ]
+}
+
+@test "branche du robot et commits introuvables → construction" {
+  run --separate-stderr "$SCRIPT" "" "" chore/image-2026.11.13
+  [ "$status" -eq 0 ]
+  [ "$output" = true ]
+}
+
+@test "le préfixe chore/image- est bien celui des branches de publier-image.yml" {
+  workflow="$BATS_TEST_DIRNAME/../.github/workflows/publier-image.yml"
+  grep -qF 'branche="chore/image-$VERSION"' "$workflow"
+  grep -qF 'PREFIXE_ROBOT=chore/image-' "$SCRIPT"
 }
 
 @test "docs, CONTRIBUTING, tests et autres workflows → pas de construction" {
@@ -216,6 +261,9 @@ b"
 
 @test "mauvais nombre d'arguments → sortie 2" {
   run --separate-stderr "$SCRIPT" "$BASE"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run --separate-stderr "$SCRIPT" "$BASE" "$BASE" chore/image-1 en-trop
   [ "$status" -eq 2 ]
   [ -z "$output" ]
 }

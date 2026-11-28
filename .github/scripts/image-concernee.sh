@@ -3,12 +3,14 @@
 # image-concernee.sh : une PR peut-elle changer l'image ? Appelé par le
 # job « build & smoke-test » de .github/workflows/devcontainer.yml.
 #
-#   image-concernee.sh <base> <tête>
+#   image-concernee.sh <base> <tête> [<branche de tête>]
 #       Liste les fichiers changés par la PR (git diff base...tête, depuis
 #       leur ancêtre commun, renommages comptés comme suppression + ajout)
 #       et écrit une seule ligne :
-#         true   au moins un fichier est une entrée de l'image (ci-dessous),
-#                ou la liste n'a pas pu être établie : construire ;
+#         true   la branche de tête est une branche du robot publier-image
+#                (`chore/image-*`), ou au moins un fichier est une entrée
+#                de l'image (ci-dessous), ou la liste n'a pas pu être
+#                établie : construire ;
 #         false  aucune entrée de l'image : la construction peut être sautée.
 #       La raison est écrite sur stderr.
 #
@@ -20,9 +22,15 @@
 #   - ce script (la décision elle-même) et `.github/actions/` ;
 #   - `.gitattributes` et `.gitmodules` (ce que contient le checkout).
 # `.devcontainer/devcontainer.json` et `exemples/devcontainer.json` ne
-# font que citer une image déjà publiée : la PR « chore: image » du robot
-# publier-image ne touche qu'eux et ne construit donc rien ici
-# (devcontainer-publish reconstruit et teste l'image au tag).
+# font que citer une image : une PR qui ne touche qu'eux ne construit rien.
+# Sauf la PR « chore: image » du robot publier-image (branche
+# `chore/image-*`), qui construit toujours : c'est le dernier contrôle de
+# l'état exact qui va recevoir le tag. Le ruleset n'exige pas une branche
+# à jour : deux PR de `.devcontainer/source/` vertes chacune contre un
+# ancien main peuvent être fusionnées, et leur combinaison n'est
+# construite qu'ici avant le tag.
+# `devcontainer-publish.yml` n'est pas une entrée : ce workflow ne le
+# lance pas, donc une PR qui ne change que lui prend le chemin rapide.
 #
 # Dans le doute, construire : toute erreur (commit absent, pas d'ancêtre
 # commun, git en échec) donne true. Seul un mauvais nombre d'arguments
@@ -30,9 +38,12 @@
 # =====================================================================
 set -uo pipefail
 
-[ $# -eq 2 ] || { echo "Usage : image-concernee.sh <base> <tête>" >&2; exit 2; }
+[ $# -eq 2 ] || [ $# -eq 3 ] || { echo "Usage : image-concernee.sh <base> <tête> [<branche de tête>]" >&2; exit 2; }
 base=$1
 tete=$2
+branche=${3:-}
+# Branches des PR d'image : branche="chore/image-$VERSION" dans publier-image.yml.
+PREFIXE_ROBOT=chore/image-
 
 construire() {
     echo "construction : $*" >&2
@@ -52,6 +63,10 @@ entree_image() {
     esac
     return 1
 }
+
+case "$branche" in
+    "$PREFIXE_ROBOT"*) construire "$branche est une PR d'image du robot publier-image, dernier contrôle avant le tag" ;;
+esac
 
 for c in "$base" "$tete"; do
     git rev-parse -q --verify "$c^{commit}" >/dev/null 2>&1 \
