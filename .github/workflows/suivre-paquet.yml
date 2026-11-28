@@ -145,7 +145,7 @@ jobs:
             # ARG réécrite) : GitHub la marque alors en conflit, pour toujours.
             # « UNKNOWN » : le calcul est en cours, on réessaie un moment.
             for _ in 1 2 3 4 5 6; do
-              vue=$(gh pr view "$pr" --json mergeable,commits)
+              vue=$(gh pr view "$pr" --json mergeable,commits,isDraft,labels)
               [ "$(jq -r .mergeable <<< "$vue")" != UNKNOWN ] && break
               sleep 5
             done
@@ -156,6 +156,9 @@ jobs:
                 fermer=$pr
                 pr=""
                 action=nouvelle ;;
+              garde)
+                echo "::warning::La PR #$pr ($branche) est en conflit avec main, mais elle est en brouillon ou porte l'étiquette « garder-ouverte » : laissée telle quelle, à rebaser ou à fermer à la main."
+                exit 0 ;;
               humain)
                 echo "::warning::La PR #$pr ($branche) est en conflit avec main, mais elle contient des commits qui ne sont pas du robot : à rebaser ou à fermer à la main."
                 exit 0 ;;

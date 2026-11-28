@@ -36,11 +36,11 @@ EOT
   [ -z "$output" ]
 }
 
-pr() { # état, logins des auteurs des commits
+pr() { # état, logins des auteurs des commits ; EXTRA = champs JSON en plus
   local m=$1; shift
   local c="" l
   for l in "$@"; do c="$c{\"authors\":[{\"login\":\"$l\"}]},"; done
-  printf '{"mergeable":"%s","commits":[%s]}' "$m" "${c%,}"
+  printf '{"mergeable":"%s","commits":[%s]%s}' "$m" "${c%,}" "${EXTRA:-}"
 }
 
 @test "conflit : PR mergeable, ok" {
@@ -60,6 +60,26 @@ pr() { # état, logins des auteurs des commits
 
 @test "conflit : en conflit avec un commit d'une personne, humain" {
   run bash -c "$(declare -f pr); pr CONFLICTING 'robot[bot]' alice | '$SCRIPT' conflit robot"
+  [ "$output" = humain ]
+}
+
+@test "conflit : en brouillon, garde (pas de recréation)" {
+  run bash -c "$(declare -f pr); EXTRA=',\"isDraft\":true,\"labels\":[]' pr CONFLICTING 'robot[bot]' | '$SCRIPT' conflit robot"
+  [ "$output" = garde ]
+}
+
+@test "conflit : étiquette garder-ouverte, garde" {
+  run bash -c "$(declare -f pr); EXTRA=',\"isDraft\":false,\"labels\":[{\"name\":\"garder-ouverte\"}]' pr CONFLICTING 'robot[bot]' | '$SCRIPT' conflit robot"
+  [ "$output" = garde ]
+}
+
+@test "conflit : liste de commits vide, humain" {
+  run bash -c "echo '{\"mergeable\":\"CONFLICTING\",\"commits\":[]}' | '$SCRIPT' conflit robot"
+  [ "$output" = humain ]
+}
+
+@test "conflit : commit sans auteur, humain" {
+  run bash -c "echo '{\"mergeable\":\"CONFLICTING\",\"commits\":[{\"authors\":[]}]}' | '$SCRIPT' conflit robot"
   [ "$output" = humain ]
 }
 
