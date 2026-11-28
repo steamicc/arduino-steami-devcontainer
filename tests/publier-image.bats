@@ -253,6 +253,23 @@ branche_pr() {
   [ "$output" = "non" ]
 }
 
+# Part bien du merge-base : un correctif de .devcontainer/source propre à
+# la branche de la PR ne compte pas comme un retard sur main.
+@test "retard : changement de .devcontainer/source sur la branche seulement → non" {
+  citer 2026.11.12
+  git tag devcontainer-2026.11.12
+  changer_source
+  branche_pr
+  git switch -q chore/image-2026.11.13
+  changer_source
+  git switch -q main
+  echo 'Une ligne de plus.' >> README.md
+  git commit -q -am "docs: README"
+  run "$SCRIPT" retard chore/image-2026.11.13 main
+  [ "$status" -eq 0 ]
+  [ "$output" = "non" ]
+}
+
 @test "retard : commit introuvable → erreur" {
   citer 2026.11.12
   run --separate-stderr "$SCRIPT" retard chore/image-inconnue main
