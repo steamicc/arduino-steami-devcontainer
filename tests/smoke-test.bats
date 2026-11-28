@@ -51,9 +51,7 @@ faux_pio() {
   cat > "$BIN/pio" <<'PIO'
 #!/bin/bash
 ex=${PLATFORMIO_SRC_DIR#"$FAUX_LIB"/examples/}
-[ -n "${PLATFORMIO_WORKSPACE_DIR:-}" ] || { echo "pas de PLATFORMIO_WORKSPACE_DIR" >&2; exit 3; }
-mkdir -p "$(dirname "$PLATFORMIO_WORKSPACE_DIR")"
-mkdir "$PLATFORMIO_WORKSPACE_DIR" || { echo "dossier de travail partagé : $PLATFORMIO_WORKSPACE_DIR" >&2; exit 4; }
+[ -z "${PLATFORMIO_WORKSPACE_DIR:-}" ] || { echo "dossier de travail propre : $PLATFORMIO_WORKSPACE_DIR" >&2; exit 4; }
 echo "$ex" >> "$JOURNAL/compiles"
 mkdir -p "$JOURNAL/actifs"
 : > "$JOURNAL/actifs/$$"
@@ -79,7 +77,7 @@ lancer_boucle() {
   [ -s "$BATS_TEST_TMPDIR/boucle.sh" ]
   cat > "$BATS_TEST_TMPDIR/appel.sh" <<APPEL
 set -u
-TMP="$BATS_TEST_TMPDIR/tmp"; LIB="$FAUX_LIB"; EXEMPLES=$1; PARALLELE=4
+TMP="$BATS_TEST_TMPDIR/tmp"; LIB="$FAUX_LIB"; EXEMPLES=$1
 echec() { echo "✗ \$*" >&2; exit 1; }
 ok() { echo "✅ \$*"; }
 . "$BATS_TEST_TMPDIR/boucle.sh"
@@ -181,18 +179,16 @@ APPEL
   [[ "$stderr" == *"steami-exemples ne liste que 2 exemples"* ]]
 }
 
-@test "compilations en parallèle, chacune dans son propre dossier de travail" {
+@test "compilations l'une après l'autre, dans le dossier de travail partagé (objets des bibliothèques réutilisés)" {
   faux_paquet_50 BLE/BleA:ble
   lancer_boucle tous
   [ "$status" -eq 0 ]
-  [[ "$stderr" != *"dossier de travail partagé"* ]]
-  # Au moins deux compilations ont tourné en même temps.
-  [ "$(sort -n "$BATS_TEST_TMPDIR/journal/simultanes" | tail -1)" -ge 2 ]
-  # La sortie de pio reste dans le journal de chaque exemple, sans se mêler.
-  [[ "$output" != *"terminée"* ]]
+  [[ "$stderr" != *"dossier de travail propre"* ]]
+  [ "$(sort -n "$BATS_TEST_TMPDIR/journal/simultanes" | tail -1)" -eq 1 ]
+  [ "$(wc -l < "$BATS_TEST_TMPDIR/journal/compiles")" -ge 50 ]
 }
 
-@test "un exemple en échec dans un job parallèle → script en échec, message et fin du journal" {
+@test "un exemple en échec → script en échec, message et fin du journal" {
   faux_paquet_50 BLE/BleA:ble
   PIO_ECHEC=MMM/Ex25 lancer_boucle tous
   [ "$status" -eq 1 ]
