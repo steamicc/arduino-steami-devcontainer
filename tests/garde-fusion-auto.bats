@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests de la garde commune de fusion automatique (.github/scripts/garde-fusion-auto.sh)
-# et de son appel par les robots suivre-paquet et suivre-daplink.
+# et de son appel par les robots suivre-paquet, suivre-daplink et publier-image.
 # Lancer : bats tests/garde-fusion-auto.bats
 #
 # Le script est une copie à l'identique de la garde commune des dépôts steamicc :
@@ -58,11 +58,12 @@ plus_de_garde_inline() {
   done
 }
 
+# jeton_de_l_app <workflow> <condition de l'étape>
 jeton_de_l_app() {
   run etape "$1"
   grep -qxF '          GH_TOKEN: ${{ steps.app.outputs.token }}' <<<"$output"
   grep -qxF '          APP_SLUG: ${{ steps.app.outputs.app-slug }}' <<<"$output"
-  grep -qxF "        if: steps.comparaison.outputs.action != ''" <<<"$output"
+  grep -qxF "        if: $2" <<<"$output"
 }
 
 jeton_actions() {
@@ -78,7 +79,7 @@ jeton_actions() {
 }
 
 @test "suivre-paquet : la garde reçoit le jeton de l'App et le slug du robot" {
-  jeton_de_l_app suivre-paquet.yml
+  jeton_de_l_app suivre-paquet.yml "steps.comparaison.outputs.action != ''"
 }
 
 @test "suivre-paquet : le jeton de l'App peut relancer un check rouge (actions: write)" {
@@ -94,9 +95,56 @@ jeton_actions() {
 }
 
 @test "suivre-daplink : la garde reçoit le jeton de l'App et le slug du robot" {
-  jeton_de_l_app suivre-daplink.yml
+  jeton_de_l_app suivre-daplink.yml "steps.comparaison.outputs.action != ''"
 }
 
 @test "suivre-daplink : le jeton de l'App peut relancer un check rouge (actions: write)" {
   jeton_actions suivre-daplink.yml
+}
+
+@test "publier-image : la fusion automatique passe par la garde commune, avec les deux checks exigés" {
+  appel_de_la_garde publier-image.yml
+}
+
+@test "publier-image : plus de garde écrite dans le workflow" {
+  plus_de_garde_inline publier-image.yml
+}
+
+@test "publier-image : la garde reçoit le jeton de l'App et le slug du robot, pour une PR nouvelle ou existante" {
+  jeton_de_l_app publier-image.yml "steps.recherche.outputs.suite != ''"
+  grep -qxF '          PR: ${{ steps.ouverture.outputs.pr || steps.recherche.outputs.pr }}' <<<"$output"
+}
+
+@test "publier-image : le jeton de l'App peut relancer un check rouge (actions: write)" {
+  jeton_actions publier-image.yml
+}
+
+@test "publier-image : le jeton de l'App garde la permission Workflows (gh pr update-branch)" {
+  grep -qxF '          permission-workflows: write' "$RACINE/.github/workflows/publier-image.yml"
+}
+
+# Juste après « gh pr update-branch », l'API peut encore donner l'ancien SHA,
+# dont le build vient d'être annulé : la garde le relancerait pour rien.
+@test "publier-image : pas d'appel de la garde juste après une mise à jour de la branche" {
+  run etape publier-image.yml
+  grep -qxF '          A_JOUR: ${{ steps.maj.outputs.a_jour }}' <<<"$output"
+  # Le test de A_JOUR, la lecture de la fusion automatique, puis exit 0,
+  # avant l'appel de la garde : on ne saute la garde que si elle est armée.
+  run awk -v appel="          $APPEL" '
+    $0 == "          if [ \"$A_JOUR\" = oui ]; then" { test = NR }
+    test && !armee && NR > test && /autoMergeRequest != null/ { armee = NR }
+    armee && !sortie && NR > armee && $0 ~ /^ +exit 0$/ { sortie = NR }
+    $0 == appel { garde = NR }
+    END { exit !(test && armee && sortie && garde && test < armee && armee < sortie && sortie < garde) }' <<<"$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "publier-image : plus d'avertissement séparé sur les checks rouges (remplacé par la garde)" {
+  fichier="$RACINE/.github/workflows/publier-image.yml"
+  for motif in 'Vérifie les checks de la PR' 'statusCheckRollup' '  checks: read' '  statuses: read'; do
+    if grep -qF "$motif" "$fichier"; then
+      echo "publier-image.yml contient encore « $motif »."
+      return 1
+    fi
+  done
 }
