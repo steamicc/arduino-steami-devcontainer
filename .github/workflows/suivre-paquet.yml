@@ -9,7 +9,12 @@
 # jour l'ARG, ouvre la PR et active sa fusion automatique (squash) : elle
 # est fusionnée dès que devcontainer.yml est au vert. Si la PR du robot
 # pour cette version est déjà ouverte, il vérifie seulement sa fusion
-# automatique. Rien à faire à la main ensuite : à la fusion,
+# automatique. Une PR du robot qui, entre-temps, est passée en conflit avec
+# main (une release plus ancienne a été fusionnée avant elle : les deux
+# réécrivent la même ligne ARG) est fermée avec sa branche, puis recréée
+# depuis main, sauf si une personne y a poussé des commits (avertissement).
+# À chaque nouvelle PR, les autres PR ouvertes du robot `chore/paquet-*`
+# sont fermées (« Superseded by #N »). Rien à faire à la main ensuite : à la fusion,
 # publier-image.yml ouvre la PR « chore: image AAAA.MM.N », puis pose à
 # sa fusion le tag `devcontainer-AAAA.MM.N` qui publie l'image, et le
 # robot suivre-image du modèle suit la nouvelle version (CONTRIBUTING.md,
@@ -133,10 +138,39 @@ jobs:
           pr=$(gh pr list --state open --head "$branche" --json number,author,isCrossRepository \
                  | jq -r --arg auteur "app/$APP_SLUG" \
                      '[.[] | select((.isCrossRepository | not) and .author.login == $auteur) | .number][0] // empty')
+          fermer=""
+          action=""
           if [ -n "$pr" ]; then
-            echo "La PR #$pr ($branche) est déjà ouverte : vérification de sa fusion automatique."
-            action=existante
-          # Sinon, branche ou PR (ouverte ou fermée) déjà là : on ne recommence pas.
+            # Une PR plus ancienne a pu être fusionnée avant celle-ci (même ligne
+            # ARG réécrite) : GitHub la marque alors en conflit, pour toujours.
+            # « UNKNOWN » : le calcul est en cours, on réessaie un moment.
+            for _ in 1 2 3 4 5 6; do
+              vue=$(gh pr view "$pr" --json mergeable,commits,isDraft,labels)
+              [ "$(jq -r .mergeable <<< "$vue")" != UNKNOWN ] && break
+              sleep 5
+            done
+            conflit=$(.github/scripts/suivre-paquet.sh conflit "$APP_SLUG" <<< "$vue")
+            case "$conflit" in
+              recreer)
+                echo "La PR #$pr ($branche) est en conflit avec main : elle sera fermée et recréée depuis main."
+                fermer=$pr
+                pr=""
+                action=nouvelle ;;
+              garde)
+                echo "::warning::La PR #$pr ($branche) est en conflit avec main, mais elle est en brouillon ou porte l'étiquette « garder-ouverte » : laissée telle quelle, à rebaser ou à fermer à la main."
+                exit 0 ;;
+              humain)
+                echo "::warning::La PR #$pr ($branche) est en conflit avec main, mais elle contient des commits qui ne sont pas du robot : à rebaser ou à fermer à la main."
+                exit 0 ;;
+              *)
+                echo "La PR #$pr ($branche) est déjà ouverte : vérification de sa fusion automatique."
+                action=existante ;;
+            esac
+          fi
+          # Sans PR ouverte : branche ou PR (ouverte ou fermée) déjà là, on ne recommence pas.
+          # (Si la PR en conflit est à recréer, sa branche est supprimée à l'étape suivante.)
+          if [ -n "$action" ]; then
+            :
           elif git ls-remote --exit-code --heads origin "$branche" >/dev/null 2>&1 \
              || [ -n "$(gh pr list --state all --head "$branche" --json number --jq '.[].number')" ]; then
             echo "$branche existe déjà : rien à faire."
@@ -167,11 +201,24 @@ jobs:
           {
             echo "action=$action"
             echo "pr=$pr"
+            echo "fermer=$fermer"
             echo "actuel=$actuel"
             echo "derniere=$derniere"
             echo "branche=$branche"
             echo "boards=$boards"
           } >> "$GITHUB_OUTPUT"
+
+      # PR en conflit avec main (une version plus récente de la même ligne ARG a
+      # été fusionnée) : la fermer en supprimant sa branche, puis repartir de main.
+      - name: Ferme la PR en conflit
+        if: steps.comparaison.outputs.fermer != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          FERMER: ${{ steps.comparaison.outputs.fermer }}
+        run: |
+          set -euo pipefail
+          gh pr close "$FERMER" --delete-branch \
+            --comment "En conflit avec main : cette PR est fermée, le robot en rouvre une depuis main."
 
       - name: Crée la branche et met à jour l'ARG
         if: steps.comparaison.outputs.action == 'nouvelle'
@@ -231,6 +278,31 @@ jobs:
             exit 1
           fi
           echo "pr=$numero" >> "$GITHUB_OUTPUT"
+
+      # Une PR d'une release plus ancienne réécrit la même ligne ARG : une fois
+      # l'une fusionnée, l'autre serait en conflit pour toujours. Seules les PR
+      # de l'App, dans ce dépôt, dont la branche est chore/paquet-*, sont fermées.
+      - name: Ferme les PR des releases dépassées
+        if: steps.comparaison.outputs.action != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          PR: ${{ steps.ouverture.outputs.pr || steps.comparaison.outputs.pr }}
+          BRANCHE: ${{ steps.comparaison.outputs.branche }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PR" =~ ^[0-9]+$ ]]; then
+            echo "::error::Numéro de PR introuvable (« $PR »)"
+            exit 1
+          fi
+          # Pas de --author (index de recherche en retard) : filtre sur l'auteur dans le script.
+          anciennes=$(gh pr list --state open --limit 200 \
+            --json number,headRefName,isCrossRepository,author \
+            | .github/scripts/suivre-paquet.sh anciennes "$BRANCHE" "$APP_SLUG")
+          for n in $anciennes; do
+            echo "Fermeture de la PR #$n (release dépassée)."
+            gh pr close "$n" --delete-branch --comment "Superseded by #$PR."
+          done
 
       - name: Active la fusion automatique
         if: steps.comparaison.outputs.action != ''
