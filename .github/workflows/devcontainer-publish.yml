@@ -20,9 +20,10 @@
 #   - workflow_dispatch avec la version en paramètre, à la main :
 #     uniquement une fois ce fichier présent sur la branche par défaut.
 #
-# Le robot suivre-image du modèle arduino-steami-starter suit ensuite la
-# nouvelle version de lui-même (CONTRIBUTING.md, « Publier une nouvelle
-# image »).
+# Une fois l'image poussée, le job `aval` lance tout de suite le robot
+# suivre-image du modèle arduino-steami-starter, qui ouvre sa PR vers la
+# nouvelle version. Son cron quotidien reste le secours si le lancement
+# échoue (CONTRIBUTING.md, « Publier une nouvelle image »).
 #
 # Jamais de tag `latest`, et une version publiée n'est jamais écrasée :
 # les dépôts d'élèves déjà créés pointent dessus.
@@ -147,7 +148,42 @@ jobs:
               echo "**À faire** : mettre cette version dans$retard."
             fi
             echo
-            echo "Une fois l'image publiée, le robot \`suivre-image\` du dépôt modèle \`steamicc/arduino-steami-starter\` ouvre sa PR vers cette version (chaque jour, ou à la demande). Les dépôts d'élèves déjà créés gardent l'ancienne."
+            echo "Une fois l'image publiée, le job « robots en aval » lance le robot \`suivre-image\` du dépôt modèle \`steamicc/arduino-steami-starter\`, qui ouvre sa PR vers cette version (s'il n'a pas pu être lancé, son cron quotidien prend le relais). Les dépôts d'élèves déjà créés gardent l'ancienne."
             echo
             echo "À la première publication, rendre le paquet **public** (Packages → Package settings → Change visibility), puis vérifier qu'un \`docker pull $IMAGE:$VERSION\` fonctionne sans être connecté, comme un élève."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  aval:
+    name: robots en aval
+    needs: publish
+    if: github.repository == 'steamicc/arduino-steami-devcontainer'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Jeton pour les robots en aval
+        id: jeton_aval
+        continue-on-error: true   # sans jeton, on prévient et les crons prennent le relais
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_SECRET }}
+          owner: steamicc
+          repositories: arduino-steami-starter          # les dépôts des cibles, séparés par des virgules
+          permission-actions: write
+
+      - name: Déclencher les robots en aval
+        continue-on-error: true   # un déclenchement raté ne fait jamais échouer la publication
+        env:
+          GH_TOKEN: ${{ steps.jeton_aval.outputs.token }}
+          JETON: ${{ steps.jeton_aval.outcome }}
+        run: |
+          if [ "$JETON" != success ]; then
+            echo "::warning::Jeton de l'App indisponible : les robots en aval tourneront à leur cron."
+            exit 0
+          fi
+          # Une cible par chaîne "<dépôt> <robot>" ; une cible ratée n'empêche pas les suivantes.
+          for cible in "arduino-steami-starter suivre-image.yml"; do
+            read -r repo workflow <<<"$cible"
+            gh workflow run "$workflow" -R "steamicc/$repo" \
+              || echo "::warning::Robot $workflow de steamicc/$repo non déclenché : son cron prendra le relais (vérifier la permission Actions en écriture de l'App et son installation sur ce dépôt)."
+          done
