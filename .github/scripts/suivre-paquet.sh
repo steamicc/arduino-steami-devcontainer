@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Décisions du robot suivre-paquet, testées dans tests/suivre-paquet.bats.
+#
+#   suivre-paquet.sh anciennes <branche> <slug-app>   (JSON de `gh pr list` sur l'entrée)
+#       Numéros des PR ouvertes à fermer : branche chore/paquet-* de ce dépôt,
+#       ouverte par l'App, autre que <branche>. Pas de --author côté gh (index
+#       de recherche en retard) : le filtre se fait ici.
+#
+#   suivre-paquet.sh conflit <slug-app>   (JSON de `gh pr view --json mergeable,commits`)
+#       ok       : la PR n'est pas en conflit (ou l'état est encore inconnu)
+#       recreer  : en conflit, tous les commits sont de l'App : fermer la PR
+#                  et en rouvrir une depuis main
+#       humain   : en conflit, mais une personne a poussé dessus : ne rien casser
+set -euo pipefail
+
+cmd=${1:-}
+case "$cmd" in
+  anciennes)
+    branche=${2:?branche}
+    slug=${3:?slug}
+    jq -r --arg branche "$branche" --arg a1 "app/$slug" --arg a2 "${slug}[bot]" \
+      '.[] | select((.isCrossRepository | not)
+         and (.headRefName | startswith("chore/paquet-"))
+         and .headRefName != $branche
+         and (.author.login == $a1 or .author.login == $a2)) | .number'
+    ;;
+  conflit)
+    slug=${2:?slug}
+    jq -r --arg a1 "$slug" --arg a2 "${slug}[bot]" --arg a3 "app/$slug" \
+      'if .mergeable != "CONFLICTING" then "ok"
+       elif ([.commits[].authors[].login] | all(. == $a1 or . == $a2 or . == $a3)) then "recreer"
+       else "humain" end'
+    ;;
+  *)
+    echo "usage: $0 anciennes <branche> <slug> | conflit <slug>" >&2
+    exit 2
+    ;;
+esac
