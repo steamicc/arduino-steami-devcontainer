@@ -3,8 +3,10 @@
 # (steamicc/arduino-steami), installé dans l'image au tag fixé par
 # `ARG STEAMI_PAQUET` du Dockerfile.
 #
-# Une fois par jour (et à la demande), le workflow lit la dernière release
-# du paquet. Si elle est plus récente que le tag de l'image et qu'aucune
+# Une fois par jour, à la demande et après chaque publication du paquet
+# (déclenché par publish-arduino-package.yml d'arduino-steami-lib, sans
+# entrée), le workflow lit la dernière release du paquet
+# (/releases/latest). Si elle est plus récente que le tag de l'image et qu'aucune
 # branche ni PR `chore/paquet-<tag>` n'existe, il crée la branche, met à
 # jour l'ARG, ouvre la PR et active sa fusion automatique (squash) : elle
 # est fusionnée dès que devcontainer.yml est au vert. Si la PR du robot
