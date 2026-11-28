@@ -206,3 +206,77 @@ changer_source() {
   [ "$status" -eq 2 ]
   git diff --quiet
 }
+
+# Crée la branche de la PR d'image depuis HEAD, y change la version, et
+# revient sur main.
+branche_pr() {
+  git switch -q -c chore/image-2026.11.13
+  citer 2026.11.13
+  git switch -q main
+}
+
+@test "retard : changement de .devcontainer/source sur main → oui" {
+  citer 2026.11.12
+  git tag devcontainer-2026.11.12
+  changer_source
+  branche_pr
+  changer_source
+  run "$SCRIPT" retard chore/image-2026.11.13 main
+  [ "$status" -eq 0 ]
+  [ "$output" = "oui" ]
+}
+
+@test "retard : changement hors de .devcontainer/source sur main → non" {
+  citer 2026.11.12
+  git tag devcontainer-2026.11.12
+  changer_source
+  branche_pr
+  echo 'Une ligne de plus.' >> README.md
+  git commit -q -am "docs: README"
+  run "$SCRIPT" retard chore/image-2026.11.13 main
+  [ "$status" -eq 0 ]
+  [ "$output" = "non" ]
+}
+
+@test "retard : main déjà fusionné dans la branche → non" {
+  citer 2026.11.12
+  git tag devcontainer-2026.11.12
+  changer_source
+  branche_pr
+  changer_source
+  # Ce que fait « gh pr update-branch » : fusion de main dans la branche.
+  git switch -q chore/image-2026.11.13
+  git merge -q --no-edit main
+  git switch -q main
+  run "$SCRIPT" retard chore/image-2026.11.13 main
+  [ "$status" -eq 0 ]
+  [ "$output" = "non" ]
+}
+
+# Part bien du merge-base : un correctif de .devcontainer/source propre à
+# la branche de la PR ne compte pas comme un retard sur main.
+@test "retard : changement de .devcontainer/source sur la branche seulement → non" {
+  citer 2026.11.12
+  git tag devcontainer-2026.11.12
+  changer_source
+  branche_pr
+  git switch -q chore/image-2026.11.13
+  changer_source
+  git switch -q main
+  echo 'Une ligne de plus.' >> README.md
+  git commit -q -am "docs: README"
+  run "$SCRIPT" retard chore/image-2026.11.13 main
+  [ "$status" -eq 0 ]
+  [ "$output" = "non" ]
+}
+
+@test "retard : commit introuvable → erreur" {
+  citer 2026.11.12
+  run --separate-stderr "$SCRIPT" retard chore/image-inconnue main
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"chore/image-inconnue"* ]]
+  run --separate-stderr "$SCRIPT" retard main 0123456789abcdef0123456789abcdef01234567
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+}

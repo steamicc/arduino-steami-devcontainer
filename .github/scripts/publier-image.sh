@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # =====================================================================
-# publier-image.sh : décide de la suite après un push sur main et réécrit
-# la version de l'image. Appelé par .github/workflows/publier-image.yml.
+# publier-image.sh : décide de la suite après un push sur main, réécrit
+# la version de l'image et dit si la PR d'image ouverte est en retard sur
+# main. Appelé par .github/workflows/publier-image.yml.
 #
 #   publier-image.sh decider <commit> <AAAA.MM>
 #       Lit l'état du dépôt (tags devcontainer-*, version citée par les
@@ -19,6 +20,12 @@
 #   publier-image.sh remplacer <V>
 #       Remplace la version citée dans les deux devcontainer.json du
 #       répertoire courant, et rien d'autre.
+#
+#   publier-image.sh retard <tete> <commit>
+#       Écrit « oui » si .devcontainer/source a changé entre
+#       git merge-base <tete> <commit> et <commit> : <commit> (main) a des
+#       changements de l'image que la branche de tête <tete> (la PR
+#       d'image ouverte) n'a pas encore. Écrit « non » sinon.
 #
 # Lancer à la racine du dépôt. Le script ne fait ni commit, ni push, ni
 # appel réseau : le workflow agit d'après sa sortie.
@@ -44,6 +51,7 @@ usage() {
     cat >&2 <<'EOT'
 Usage : publier-image.sh decider <commit> <AAAA.MM>
         publier-image.sh remplacer <AAAA.MM.N>
+        publier-image.sh retard <tete> <commit>
 EOT
     exit 2
 }
@@ -134,8 +142,25 @@ remplacer() {
     done
 }
 
+retard() {
+    [ $# -eq 2 ] || usage
+    local tete=$1 commit=$2 c base
+    for c in "$tete" "$commit"; do
+        git rev-parse -q --verify "$c^{commit}" >/dev/null || erreur "commit « $c » introuvable."
+    done
+    base=$(git merge-base "$tete" "$commit") || erreur "aucun ancêtre commun entre $tete et $commit."
+    local rc=0
+    git diff --quiet "$base" "$commit" -- "$SOURCE" || rc=$?
+    case $rc in
+        0) echo non ;;
+        1) echo oui ;;
+        *) erreur "git diff a échoué entre $base et $commit." ;;
+    esac
+}
+
 case "${1:-}" in
     decider) shift; decider "$@" ;;
     remplacer) shift; remplacer "$@" ;;
+    retard) shift; retard "$@" ;;
     *) usage ;;
 esac
