@@ -15,6 +15,15 @@ trap 'rm -rf "$TMP"' EXIT
 echec() { echo "✗ $*" >&2; exit 1; }
 ok() { echo "✅ $*"; }
 
+# Boucle sur tous les exemples du paquet : `tous` (par défaut) ou `aucun`.
+# La CI des PR ne la lance qu'une fois par run (devcontainer.yml) ; la
+# publication la lance toujours (devcontainer-publish.yml).
+EXEMPLES=${STEAMI_SMOKE_EXEMPLES:-tous}
+case "$EXEMPLES" in
+  tous | aucun) ;;
+  *) echec "STEAMI_SMOKE_EXEMPLES vaut tous ou aucun (obtenu : « $EXEMPLES »)" ;;
+esac
+
 command -v pio >/dev/null 2>&1 || echec "pio est introuvable"
 [ "$(pio --version)" = "PlatformIO Core, version 6.1.19" ] \
   || echec "pio --version devrait afficher 6.1.19, obtenu : $(pio --version)"
@@ -65,14 +74,18 @@ steami-compiler lis2mdl/basicreader >"$TMP/cmd.log" 2>&1 \
 ok "steami-compiler lis2mdl/basicreader (nom réel : LIS2MDL/BasicReader)"
 
 # Tous les exemples du paquet, tels que steami-exemples les liste.
-nb=0
-for ex in $(steami-exemples); do
-  PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 \
-    || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
-  nb=$((nb + 1))
-done
-[ "$nb" -ge 50 ] || echec "steami-exemples ne liste que $nb exemples"
-ok "$nb exemples compilés"
+if [ "$EXEMPLES" = tous ]; then
+  nb=0
+  for ex in $(steami-exemples); do
+    PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 \
+      || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
+    nb=$((nb + 1))
+  done
+  [ "$nb" -ge 50 ] || echec "steami-exemples ne liste que $nb exemples"
+  ok "$nb exemples compilés"
+else
+  ok "boucle des exemples sautée (STEAMI_SMOKE_EXEMPLES=aucun)"
+fi
 
 # zsh par défaut, historique conservé dans /workspaces (volume persistant d'un
 # Codespace). STEAMI_WORKSPACES remplace /workspaces pour pouvoir le simuler.
