@@ -218,8 +218,11 @@ jobs:
             echo "La PR d'image #$pr est déjà ouverte : vérification de sa fusion automatique."
             suite=existante
           # Sinon, branche ou PR (ouverte ou fermée) déjà là : on ne recommence pas.
+          # Seulement les PR depuis une branche de ce dépôt : une PR depuis un
+          # fork avec le même nom de branche bloquerait sinon la publication.
           elif git ls-remote --exit-code --heads origin "$branche" >/dev/null 2>&1 \
-             || [ -n "$(gh pr list --state all --head "$branche" --json number --jq '.[].number')" ]; then
+             || [ -n "$(gh pr list --state all --head "$branche" --json number,isCrossRepository \
+                          --jq '.[] | select(.isCrossRepository | not) | .number')" ]; then
             echo "::notice::$branche existe déjà (branche ou PR, même fermée) : rien à faire."
             suite=""
           else

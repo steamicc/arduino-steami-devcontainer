@@ -153,6 +153,20 @@ changer_source() {
   [[ "$stderr" == *"2026.11.11"* ]]
 }
 
+@test "decider : lit le commit donné, pas l'arbre de travail" {
+  citer 2026.11.11
+  git tag devcontainer-2026.11.11
+  changer_source
+  citer 2026.11.12
+  # HEAD~1 change la source et cite encore 2026.11.11 ; HEAD cite 2026.11.12.
+  run "$SCRIPT" decider HEAD~1 2026.11
+  [ "$status" -eq 0 ]
+  [ "$output" = "pr 2026.11.12" ]
+  run "$SCRIPT" decider HEAD 2026.11
+  [ "$status" -eq 0 ]
+  [ "$output" = "tag 2026.11.12" ]
+}
+
 @test "decider : date hors format → erreur" {
   citer 2026.11.12
   git tag devcontainer-2026.11.12
@@ -173,6 +187,17 @@ changer_source() {
   done
   [ "$(git diff --name-only | sort)" = "$(printf '%s\n' .devcontainer/devcontainer.json exemples/devcontainer.json)" ]
   [ "$(git diff --stat | tail -1)" = " 2 files changed, 2 insertions(+), 2 deletions(-)" ]
+}
+
+@test "remplacer : un fichier sans la ligne de l'image → erreur, aucun fichier modifié" {
+  citer 2026.11.12
+  # Le second fichier ne cite plus l'image : le premier ne doit pas être réécrit.
+  echo '{ "name": "test" }' > exemples/devcontainer.json
+  git commit -q -am "test: exemples sans image"
+  run --separate-stderr "$SCRIPT" remplacer 2026.11.13
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"exemples/devcontainer.json"* ]]
+  git diff --quiet
 }
 
 @test "remplacer : version hors format → erreur" {
