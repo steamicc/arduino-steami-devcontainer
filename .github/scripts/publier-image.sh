@@ -62,9 +62,12 @@ FICHIERS=(.devcontainer/devcontainer.json exemples/devcontainer.json)
 # décide de la publication) et tout fichier qui y serait ajouté. Même
 # règle que la partie .devcontainer/ de entree_image dans
 # .github/scripts/image-concernee.sh (accord vérifié par
-# tests/publier-image.bats) ; les fichiers de CI que ce script-là compte
-# aussi (devcontainer.yml, .github/actions/, image-concernee.sh) ne
-# changent pas l'image et ne donnent pas de nouvelle version.
+# tests/publier-image.bats). Ce script-là compte aussi des fichiers qui
+# ne donnent pas de nouvelle version : ceux de la CI (devcontainer.yml,
+# .github/actions/, image-concernee.sh), qui ne changent pas l'image, et
+# .gitattributes et .gitmodules (hors .devcontainer/, déjà compté), qui
+# peuvent la changer au checkout (fins de ligne, filtres) : publier alors
+# par « En secours, à la main » (CONTRIBUTING.md).
 IMAGE_CHEMINS=(.devcontainer/ ':(exclude).devcontainer/devcontainer.json')
 IMAGE_DESCRIPTION=".devcontainer/ hors .devcontainer/devcontainer.json"
 FORMAT_VERSION='^[0-9]{4}\.[0-9]{2}\.[0-9]+$'

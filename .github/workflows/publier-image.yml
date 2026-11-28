@@ -5,8 +5,11 @@
 # construction), `smoke-test.sh` et tout fichier qui y serait ajouté
 # (IMAGE_CHEMINS dans .github/scripts/publier-image.sh, même règle que la
 # partie `.devcontainer/` de .github/scripts/image-concernee.sh). Les
-# fichiers de CI (devcontainer.yml, .github/actions/, image-concernee.sh)
-# ne donnent pas de nouvelle image.
+# autres entrées d'image-concernee.sh ne donnent pas de nouvelle image :
+# les fichiers de CI (devcontainer.yml, .github/actions/,
+# image-concernee.sh) et .gitattributes et .gitmodules (hors
+# `.devcontainer/`) ; si l'un de ces deux derniers change l'image au
+# checkout, publier par « En secours, à la main » (CONTRIBUTING.md).
 #
 # À chaque push sur main (et à la demande, depuis main), le workflow
 # demande la décision à .github/scripts/publier-image.sh :
