@@ -1,7 +1,12 @@
 # =====================================================================
 # publier-image.yml : publie l'image sans geste manuel après la fusion
-# d'un changement de `.devcontainer/source/`, le seul chemin qui change
-# le contenu de l'image.
+# d'un changement de l'image : tout `.devcontainer/` sauf
+# `.devcontainer/devcontainer.json`, soit `source/` (contexte de
+# construction), `smoke-test.sh` et tout fichier qui y serait ajouté
+# (IMAGE_CHEMINS dans .github/scripts/publier-image.sh, même règle que la
+# partie `.devcontainer/` de .github/scripts/image-concernee.sh). Les
+# fichiers de CI (devcontainer.yml, .github/actions/, image-concernee.sh)
+# ne donnent pas de nouvelle image.
 #
 # À chaque push sur main (et à la demande, depuis main), le workflow
 # demande la décision à .github/scripts/publier-image.sh :
@@ -11,15 +16,15 @@
 #     workflow vérifie que ghcr.io n'a pas déjà cette version, puis pose
 #     le tag `devcontainer-V` sur le commit poussé : devcontainer-publish
 #     se déclenche alors, construit, teste et publie l'image ;
-#   - pr V : `.devcontainer/source/` a changé depuis le dernier tag
-#     `devcontainer-*`. Si aucune branche ni PR `chore/image-V` n'existe,
-#     le workflow crée la branche, met V dans les deux devcontainer.json,
+#   - pr V : l'image a changé depuis le dernier tag `devcontainer-*`.
+#     Si aucune branche ni PR `chore/image-V` n'existe, le workflow crée
+#     la branche, met V dans les deux devcontainer.json,
 #     ouvre la PR « chore: image V » et active sa fusion automatique
 #     (squash) : elle est fusionnée dès que devcontainer.yml est au vert,
 #     et le push de la fusion pose le tag. Une seule PR d'image à la
 #     fois : si une PR du robot `chore/image-*` est déjà ouverte, elle
 #     publiera aussi ce changement. Si main a des changements de
-#     `.devcontainer/source/` que sa branche n'a pas, le robot met la
+#     l'image que sa branche n'a pas, le robot met la
 #     branche à jour avec main (`gh pr update-branch`, jeton de l'App),
 #     ce qui relance devcontainer.yml ; un échec de cette mise à jour
 #     est signalé par un avertissement, avec la réponse de GitHub (un
@@ -293,14 +298,15 @@ jobs:
           DERNIER: ${{ steps.recherche.outputs.dernier }}
         run: |
           set -euo pipefail
-          changements=$(git log --oneline "devcontainer-$DERNIER..$GITHUB_SHA" -- .devcontainer/source | sed 's/^/- /')
+          # Mêmes chemins que la décision (IMAGE_CHEMINS dans le script).
+          changements=$(.github/scripts/publier-image.sh changements "devcontainer-$DERNIER" "$GITHUB_SHA" | sed 's/^/- /')
           if [ -z "$changements" ]; then
-            echo "::error::Aucun commit de .devcontainer/source entre devcontainer-$DERNIER et $GITHUB_SHA, alors que le script en a vu un changement."
+            echo "::error::Aucun commit de l'image entre devcontainer-$DERNIER et $GITHUB_SHA, alors que le script en a vu un changement."
             exit 1
           fi
           corps="$RUNNER_TEMP/corps.md"
           cat > "$corps" <<EOT
-          Changements de l'image depuis \`devcontainer-$DERNIER\` (commits de \`.devcontainer/source/\`) :
+          Changements de l'image depuis \`devcontainer-$DERNIER\` (commits de \`.devcontainer/\`, hors \`.devcontainer/devcontainer.json\`) :
 
           $changements
 
@@ -349,7 +355,7 @@ jobs:
           a_jour=non
           case "$retard" in
             oui)
-              echo "main a des changements de .devcontainer/source absents de $nom : mise à jour de la branche de la PR #$PR."
+              echo "main a des changements de l'image absents de $nom : mise à jour de la branche de la PR #$PR."
               if sortie=$(gh pr update-branch "$PR" 2>&1); then
                 a_jour=oui
                 echo "$sortie"
