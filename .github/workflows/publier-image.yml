@@ -23,8 +23,9 @@
 #     Si aucune branche ni PR `chore/image-V` n'existe, le workflow crée
 #     la branche, met V dans les deux devcontainer.json,
 #     ouvre la PR « chore: image V » et active sa fusion automatique
-#     (squash) : elle est fusionnée dès que devcontainer.yml est au vert,
-#     et le push de la fusion pose le tag.
+#     (squash, par la garde commune, voir plus bas) : elle est fusionnée
+#     dès que devcontainer.yml est au vert, et le push de la fusion pose
+#     le tag.
 #     Une PR du robot pour V fermée sans fusion par un mainteneur, sans
 #     PR ouverte ni fusionnée pour V (publier-image.sh fermee), ne bloque
 #     pas la publication jusqu'au mois suivant : si main a reçu depuis
@@ -47,12 +48,12 @@
 #     pour pousser une fusion qui apporte des changements de
 #     `.github/workflows/`). La branche est alors à mettre à jour à la
 #     main (« Update branch »).
-#     Sinon, si un check exigé de la PR est en échec, un avertissement
-#     (et le résumé du job) signale que la publication est bloquée :
-#     relancer les jobs, mettre la branche à jour avec main si main a
-#     corrigé la cause, ou corriger la PR. Le run du robot reste vert
-#     dans ces cas.
-#     Puis il vérifie sa fusion automatique. Une PR du robot dont la
+#     Puis il passe la PR à la garde de fusion automatique, sauf juste
+#     après une mise à jour réussie de sa branche dans ce run : la
+#     fusion automatique est normalement déjà activée, la CI vient de
+#     repartir, et l'API peut encore donner l'ancien SHA de tête, dont
+#     le build vient d'être annulé (la garde le relancerait pour rien) ;
+#     le passage suivant du robot vérifie la PR. Une PR du robot dont la
 #     version a déjà un tag (publiée à la main entre-temps) est périmée :
 #     elle est signalée par un avertissement, à fermer, et ignorée ;
 #   - rien : aucun changement de l'image (docs, CI, tests).
@@ -69,10 +70,22 @@
 # GITHUB_TOKEN ne sert qu'aux lectures.
 #
 # Prérequis : les mêmes que suivre-paquet.yml (secrets RELEASE_APP_ID et
-# RELEASE_APP_SECRET, App installée avec Contents et Pull requests en
-# écriture, « Allow auto-merge » et squash autorisés, ruleset « CI verte
-# avant fusion » qui exige « tests des commandes » et « build &
-# smoke-test » ; sans ce ruleset, la fusion automatique n'est pas activée).
+# RELEASE_APP_SECRET, App installée avec Contents, Pull requests et
+# Actions en écriture, plus Workflows en écriture pour `gh pr
+# update-branch`, « Allow auto-merge » et squash autorisés, ruleset « CI
+# verte avant fusion » qui exige « tests des commandes » et « build &
+# smoke-test », sans acteur de contournement ; sans ce ruleset, la fusion
+# automatique n'est pas activée).
+#
+# La fusion automatique passe par la garde commune
+# .github/scripts/garde-fusion-auto.sh (copie à l'identique dans les dépôts
+# steamicc, empreinte vérifiée par tests/garde-fusion-auto.bats), pour une
+# PR qui vient d'être ouverte comme pour une PR déjà ouverte : jamais pour
+# une PR venue d'un fork ou ouverte par un autre auteur que le robot. Si
+# elle est déjà activée et qu'un check exigé est rouge, la garde le relance
+# une fois, puis fait échouer le run du robot s'il reste rouge : une PR
+# d'image rouge n'est jamais fusionnée et retient tous les changements
+# suivants de l'image. Un check en cours n'est jamais compté comme un échec.
 #
 # Pour garder la PR ouverte (fusion à la main), la passer en brouillon ou
 # lui mettre l'étiquette « garder-ouverte » : le robot ne réactive alors
@@ -88,13 +101,9 @@ on:
   workflow_dispatch:
 
 # GITHUB_TOKEN en lecture seule : les écritures utilisent le jeton de l'App.
-# checks et statuses : lire l'état des checks de la PR d'image déjà
-# ouverte (son statusCheckRollup mêle check runs et statuts de commit).
 permissions:
   contents: read
   pull-requests: read
-  checks: read
-  statuses: read
 
 # Une seule exécution à la fois : deux pushs rapprochés ouvriraient deux PR d'image.
 concurrency:
@@ -143,11 +152,13 @@ jobs:
           # branche de la PR d'image ; si main a reçu des changements de
           # .github/workflows/, GitHub refuse ce push sans cette permission.
           permission-workflows: write
+          # La garde de fusion auto relance une fois un check exigé rouge (gh run rerun).
+          permission-actions: write
 
       - name: Explique l'échec du jeton
         if: failure() && steps.app.outcome == 'failure'
         run: |
-          echo "::error::Impossible d'obtenir un jeton de l'App avec RELEASE_APP_ID et RELEASE_APP_SECRET. Vérifiez que l'App est installée sur steamicc/arduino-steami-devcontainer avec Contents et Pull requests en écriture, et que la clé privée est bien celle de cette App."
+          echo "::error::Impossible d'obtenir un jeton de l'App avec RELEASE_APP_ID et RELEASE_APP_SECRET. Vérifiez que l'App est installée sur steamicc/arduino-steami-devcontainer avec Contents, Pull requests, Actions et Workflows en écriture, et que la clé privée est bien celle de cette App."
           exit 1
 
       # Le jeton de l'App reste dans la configuration git : les push l'utilisent.
@@ -466,77 +477,28 @@ jobs:
           esac
           echo "a_jour=$a_jour" >> "$GITHUB_OUTPUT"
 
-      # Une PR d'image rouge n'est jamais fusionnée et retient tous les
-      # changements suivants de l'image : le signaler, sans faire échouer
-      # le job. Inutile juste après une mise à jour : la CI vient de repartir.
-      - name: Vérifie les checks de la PR d'image ouverte
-        if: steps.recherche.outputs.suite == 'existante' && steps.maj.outputs.a_jour != 'oui'
-        env:
-          PR: ${{ steps.recherche.outputs.pr }}
-        run: |
-          set -euo pipefail
-          url="$GITHUB_SERVER_URL/$GH_REPO/pull/$PR"
-          # Dernier passage de chaque check exigé, en échec s'il a fini
-          # autrement qu'en succès, neutre ou sauté.
-          # Une lecture impossible (API, droits) ne fait pas échouer le job :
-          # la fusion automatique doit encore être vérifiée.
-          if ! echecs=$(gh pr view "$PR" --json statusCheckRollup --jq '
-            [.statusCheckRollup[]
-             | {nom: (.name // .context), etat: (.conclusion // .state // ""), debut: (.startedAt // .createdAt // "")}
-             | select(.nom == "tests des commandes" or .nom == "build & smoke-test")]
-            | group_by(.nom) | map(max_by(.debut))
-            | map(select(.etat | IN("FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE", "ERROR")))
-            | map("« \(.nom) »") | join(", ")'); then
-            echo "::warning::PR #$PR : impossible de lire ses checks. Vérifier à la main qu'aucun check exigé n'est en échec, sinon la publication est bloquée : $url"
-            exit 0
-          fi
-          if [ -z "$echecs" ]; then
-            echo "Aucun check exigé en échec sur la PR #$PR."
-            exit 0
-          fi
-          msg="PR #$PR : checks en échec ($echecs), la publication est bloquée ; relancer les jobs (« Re-run failed jobs »), mettre la branche à jour avec main (« Update branch ») si main a corrigé la cause, ou corriger la PR : $url"
-          echo "::warning::$msg"
-          {
-            echo "## PR d'image bloquée"
-            echo
-            echo "$msg"
-          } >> "$GITHUB_STEP_SUMMARY"
-
+      # La garde commune (.github/scripts/garde-fusion-auto.sh, copie à l'identique,
+      # tests/garde-fusion-auto.bats) refuse un fork ou un autre auteur que le
+      # robot, exige les deux jobs de devcontainer.yml sur la branche par défaut
+      # sans contournement possible, respecte brouillon et « garder-ouverte »,
+      # relance une fois un check exigé rouge, puis fait échouer le run : une
+      # PR d'image rouge n'est jamais fusionnée et retient tous les changements
+      # suivants de l'image. Pas d'appel juste après une mise à jour de la
+      # branche : la fusion automatique est normalement déjà activée, la CI
+      # vient de repartir, et l'API peut encore donner l'ancien SHA de
+      # tête, dont le build vient d'être annulé (concurrence de
+      # devcontainer.yml) : la garde le relancerait pour rien.
       - name: Active la fusion automatique
         if: steps.recherche.outputs.suite != ''
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
           PR: ${{ steps.ouverture.outputs.pr || steps.recherche.outputs.pr }}
+          A_JOUR: ${{ steps.maj.outputs.a_jour }}
         run: |
           set -euo pipefail
-          etat=$(gh pr view "$PR" --json autoMergeRequest,isDraft,labels \
-                   --jq 'if .autoMergeRequest != null then "active"
-                         elif .isDraft then "brouillon"
-                         elif any(.labels[]; .name == "garder-ouverte") then "gardee"
-                         else "" end')
-          case "$etat" in
-            active)
-              echo "La fusion automatique de la PR #$PR est déjà activée."
-              exit 0 ;;
-            brouillon|gardee)
-              # Choix d'un mainteneur : on ne réactive pas la fusion automatique.
-              echo "::notice::PR #$PR en brouillon ou avec l'étiquette « garder-ouverte » : fusion automatique laissée désactivée, à fusionner à la main."
-              exit 0 ;;
-          esac
-          # Sans check obligatoire sur main, GitHub fusionnerait tout de suite,
-          # même avec une CI rouge : on exige donc les deux jobs de devcontainer.yml.
-          contextes=$(gh api "repos/$GH_REPO/rules/branches/main" \
-            --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | unique | join("\n")')
-          manquants=""
-          for check in "tests des commandes" "build & smoke-test"; do
-            printf '%s\n' "$contextes" | grep -qxF "$check" || manquants="$manquants « $check »"
-          done
-          if [ -n "$manquants" ]; then
-            echo "::warning::PR #$PR : fusion automatique non activée, car aucune règle de main n'exige les checks$manquants. Créez d'abord un ruleset « CI verte avant fusion » sur main (Settings > Rules > Rulesets, « Require status checks to pass ») avec « tests des commandes » et « build & smoke-test », sinon la PR serait fusionnée même avec une CI rouge. En attendant, fusionnez la PR à la main une fois la CI au vert."
+          if [ "$A_JOUR" = oui ]; then
+            echo "PR #$PR : branche mise à jour avec main dans ce run, devcontainer.yml vient de repartir ; garde de fusion automatique non appelée (elle relirait peut-être l'ancien SHA de tête, dont le build vient d'être annulé). Le prochain passage du robot la vérifiera."
             exit 0
           fi
-          if ! gh pr merge "$PR" --auto --squash; then
-            echo "::error::Impossible d'activer la fusion automatique de la PR #$PR. Vérifiez « Allow auto-merge » et « Allow squash merging » (Settings > General > Pull Requests), et que l'App a Contents et Pull requests en écriture."
-            exit 1
-          fi
-          echo "Fusion automatique (squash) activée sur la PR #$PR : elle sera fusionnée dès que la CI sera au vert."
+          bash .github/scripts/garde-fusion-auto.sh "$GITHUB_REPOSITORY" "$PR" "$APP_SLUG" "tests des commandes" "build & smoke-test"
