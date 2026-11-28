@@ -21,7 +21,19 @@
 #     la branche, met V dans les deux devcontainer.json,
 #     ouvre la PR « chore: image V » et active sa fusion automatique
 #     (squash) : elle est fusionnée dès que devcontainer.yml est au vert,
-#     et le push de la fusion pose le tag. Une seule PR d'image à la
+#     et le push de la fusion pose le tag.
+#     Une PR du robot pour V fermée sans fusion par un mainteneur, sans
+#     PR ouverte ni fusionnée pour V (publier-image.sh fermee), ne bloque
+#     pas la publication jusqu'au mois suivant : si main a reçu depuis
+#     des changements de l'image que sa tête (refs/pull/N/head) n'avait
+#     pas (publier-image.sh retard), le robot supprime sa branche si elle
+#     existe encore et n'a que des commits du bot de l'App
+#     (publier-image.sh auteur ; sinon avertissement, et rien), la recrée
+#     depuis le commit poussé et ouvre une nouvelle PR qui cite la PR
+#     fermée. Sans nouveau changement de l'image, le choix du mainteneur
+#     tient (notice, rien). Une branche ou une PR d'une personne, ou une
+#     PR fusionnée, pour V : rien à faire.
+#     Une seule PR d'image à la
 #     fois : si une PR du robot `chore/image-*` est déjà ouverte, elle
 #     publiera aussi ce changement. Si main a des changements de
 #     l'image que sa branche n'a pas, le robot met la
@@ -242,10 +254,61 @@ jobs:
               pr=$numero
             fi
           done <<< "$prs"
+          # PR d'image du robot pour V fermée sans fusion par un mainteneur,
+          # sans PR ouverte ni fusionnée pour V (publier-image.sh fermee) :
+          # elle est remplacée si main a reçu depuis des changements de
+          # l'image qu'elle n'avait pas, sinon le choix du mainteneur tient.
+          fermee=""
+          supprimer=""
+          if [ -z "$pr" ]; then
+            fermee=$(gh pr list --state all --head "$branche" --limit 100 --json number,state,author,isCrossRepository \
+                       | .github/scripts/publier-image.sh fermee "$APP_SLUG")
+          fi
           if [ -n "$pr" ]; then
             echo "La PR d'image #$pr est déjà ouverte : vérification de sa branche, de ses checks et de sa fusion automatique."
             suite=existante
-          # Sinon, branche ou PR (ouverte ou fermée) déjà là : on ne recommence pas.
+          elif [ -n "$fermee" ]; then
+            url="$GITHUB_SERVER_URL/$GH_REPO/pull/$fermee"
+            # La tête d'une PR fermée reste lisible après la suppression de sa branche.
+            if ! git fetch --no-tags origin "+refs/pull/$fermee/head:refs/remotes/origin/pr-fermee"; then
+              echo "::error::Impossible de lire la tête de la PR fermée #$fermee (refs/pull/$fermee/head)."
+              exit 1
+            fi
+            if ! retard=$(.github/scripts/publier-image.sh retard refs/remotes/origin/pr-fermee "$GITHUB_SHA"); then
+              echo "::error::Impossible de comparer la tête de la PR fermée #$fermee à $GITHUB_SHA."
+              exit 1
+            fi
+            case "$retard" in
+              non)
+                echo "::notice::PR #$fermee fermée par un mainteneur, aucun nouveau changement de l'image depuis : rien à faire."
+                fermee=""
+                suite="" ;;
+              oui)
+                suite=nouvelle
+                # Branche encore là : la supprimer avant de la recréer, si
+                # elle n'a que des commits du robot (auteur : le bot de l'App).
+                if git ls-remote --exit-code --heads origin "$branche" >/dev/null 2>&1; then
+                  git fetch --no-tags origin "+refs/heads/$branche:refs/remotes/origin/$branche"
+                  id_bot=$(gh api "users/${APP_SLUG}[bot]" --jq .id)
+                  courriel="${id_bot}+${APP_SLUG}[bot]@users.noreply.github.com"
+                  robot=$(.github/scripts/publier-image.sh auteur "$GITHUB_SHA" "refs/remotes/origin/$branche" "$courriel")
+                  if [ "$robot" = oui ]; then
+                    supprimer=$(git rev-parse "refs/remotes/origin/$branche")
+                  else
+                    echo "::warning::PR #$fermee fermée et main a reçu depuis des changements de l'image, mais la branche $branche contient des commits qui ne sont pas du robot : ni supprimée ni recréée. La supprimer à la main pour que le robot rouvre une PR d'image, ou publier par « En secours, à la main » (CONTRIBUTING.md) : $url"
+                    fermee=""
+                    suite=""
+                  fi
+                fi
+                if [ "$suite" = nouvelle ]; then
+                  echo "PR #$fermee fermée sans fusion, mais main a reçu depuis des changements de l'image : $branche est recréée depuis $GITHUB_SHA et une nouvelle PR d'image est ouverte."
+                fi ;;
+              *)
+                echo "::error::Réponse « $retard » inattendue de publier-image.sh retard."
+                exit 1 ;;
+            esac
+          # Sinon, branche ou PR (ouverte ou fusionnée, ou fermée d'une
+          # personne) déjà là : on ne recommence pas.
           # Seulement les PR depuis une branche de ce dépôt : une PR depuis un
           # fork avec le même nom de branche bloquerait sinon la publication.
           elif git ls-remote --exit-code --heads origin "$branche" >/dev/null 2>&1 \
@@ -265,7 +328,23 @@ jobs:
             echo "pr=$pr"
             echo "branche=$branche"
             echo "dernier=$dernier"
+            # Seulement si la PR fermée est remplacée (suite=nouvelle).
+            echo "fermee=$fermee"
+            echo "supprimer=$supprimer"
           } >> "$GITHUB_OUTPUT"
+
+      # Branche d'une PR d'image fermée, à recréer depuis main : supprimée
+      # seulement si elle n'a pas bougé depuis la vérification de ses auteurs.
+      - name: Supprime la branche de la PR d'image fermée
+        if: steps.recherche.outputs.supprimer != ''
+        env:
+          BRANCHE: ${{ steps.recherche.outputs.branche }}
+          SUPPRIMER: ${{ steps.recherche.outputs.supprimer }}
+          FERMEE: ${{ steps.recherche.outputs.fermee }}
+        run: |
+          set -euo pipefail
+          git push --force-with-lease="refs/heads/$BRANCHE:$SUPPRIMER" origin --delete "$BRANCHE"
+          echo "Branche $BRANCHE ($SUPPRIMER) de la PR fermée #$FERMEE supprimée."
 
       - name: Crée la branche et met à jour la version
         if: steps.recherche.outputs.suite == 'nouvelle'
@@ -296,6 +375,7 @@ jobs:
           VERSION: ${{ steps.decision.outputs.version }}
           BRANCHE: ${{ steps.recherche.outputs.branche }}
           DERNIER: ${{ steps.recherche.outputs.dernier }}
+          FERMEE: ${{ steps.recherche.outputs.fermee }}
         run: |
           set -euo pipefail
           # Mêmes chemins que la décision (IMAGE_CHEMINS dans le script).
@@ -305,7 +385,11 @@ jobs:
             exit 1
           fi
           corps="$RUNNER_TEMP/corps.md"
-          cat > "$corps" <<EOT
+          : > "$corps"
+          if [ -n "$FERMEE" ]; then
+            printf '%s\n\n' "Remplace la PR #$FERMEE, fermée sans être fusionnée : \`main\` a reçu depuis des changements de l'image qu'elle n'avait pas." >> "$corps"
+          fi
+          cat >> "$corps" <<EOT
           Changements de l'image depuis \`devcontainer-$DERNIER\` (commits de \`.devcontainer/\`, hors \`.devcontainer/devcontainer.json\`) :
 
           $changements

@@ -31,6 +31,22 @@
 #       Liste (git log --oneline) les commits de <de>..<a> qui changent
 #       l'image : le corps de la PR d'image.
 #
+#   publier-image.sh fermee <slug-app>
+#       Lit sur l'entrée le JSON de
+#       `gh pr list --state all --head chore/image-<V> --json number,state,author,isCrossRepository`
+#       et écrit le numéro de la PR d'image fermée sans fusion que le robot
+#       peut remplacer : parmi les PR depuis une branche de ce dépôt, aucune
+#       n'est ouverte ni fusionnée, et la plus récente est fermée et a été
+#       ouverte par l'App (app/<slug-app> ou <slug-app>[bot]). N'écrit rien
+#       sinon (aucune PR, PR ouverte ou fusionnée, dernière PR d'une
+#       personne) : le workflow garde alors « rien à faire ».
+#
+#   publier-image.sh auteur <base> <tete> <courriel>
+#       Écrit « oui » si <base>..<tete> a au moins un commit et que tous
+#       ont pour auteur <courriel> (le bot de l'App) : la branche <tete>
+#       n'a que des commits du robot et peut être supprimée. Écrit « non »
+#       sinon (une personne y a poussé, ou rien de propre à la branche).
+#
 # Lancer à la racine du dépôt. Le script ne fait ni commit, ni push, ni
 # appel réseau : le workflow agit d'après sa sortie.
 # Sortie 2, avec un message sur stderr, si les arguments ou les fichiers
@@ -67,6 +83,8 @@ Usage : publier-image.sh decider <commit> <AAAA.MM>
         publier-image.sh remplacer <AAAA.MM.N>
         publier-image.sh retard <tete> <commit>
         publier-image.sh changements <de> <a>
+        publier-image.sh fermee <slug-app>
+        publier-image.sh auteur <base> <tete> <courriel>
 EOT
     exit 2
 }
@@ -182,10 +200,39 @@ changements() {
     git log --oneline "$de..$a" -- "${IMAGE_CHEMINS[@]}" || erreur "git log a échoué entre $de et $a."
 }
 
+fermee() {
+    [ $# -eq 1 ] && [ -n "$1" ] || usage
+    local slug=$1
+    # .state vaut OPEN, CLOSED (fermée sans fusion) ou MERGED.
+    jq -r --arg a1 "app/$slug" --arg a2 "${slug}[bot]" '
+        [.[] | select(.isCrossRepository | not)] as $prs
+        | if ($prs | length) == 0 or any($prs[]; .state == "OPEN" or .state == "MERGED") then empty
+          else ($prs | max_by(.number)) as $d
+            | if $d.state == "CLOSED" and ($d.author.login == $a1 or $d.author.login == $a2)
+              then $d.number else empty end
+          end' || erreur "liste des PR illisible (JSON de gh pr list attendu sur l'entrée)."
+}
+
+auteur() {
+    [ $# -eq 3 ] && [ -n "$3" ] || usage
+    local base=$1 tete=$2 courriel=$3 c auteurs
+    for c in "$base" "$tete"; do
+        git rev-parse -q --verify "$c^{commit}" >/dev/null || erreur "commit « $c » introuvable."
+    done
+    auteurs=$(git log --format=%ae "$base..$tete") || erreur "git log a échoué entre $base et $tete."
+    if [ -n "$auteurs" ] && ! printf '%s\n' "$auteurs" | grep -qvxF "$courriel"; then
+        echo oui
+    else
+        echo non
+    fi
+}
+
 case "${1:-}" in
     decider) shift; decider "$@" ;;
     remplacer) shift; remplacer "$@" ;;
     retard) shift; retard "$@" ;;
     changements) shift; changements "$@" ;;
+    fermee) shift; fermee "$@" ;;
+    auteur) shift; auteur "$@" ;;
     *) usage ;;
 esac

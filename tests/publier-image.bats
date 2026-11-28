@@ -404,3 +404,142 @@ branche_pr() {
   [[ "$vus" == *true* ]]
   [[ "$vus" == *false* ]]
 }
+
+# PR d'une liste `gh pr list --json number,state,author,isCrossRepository`.
+pr_json() { # <numéro> <état> <auteur> [<fork : true|false>]
+  printf '{"number": %s, "state": "%s", "author": {"login": "%s"}, "isCrossRepository": %s}' "$1" "$2" "$3" "${4:-false}"
+}
+
+@test "fermee : dernière PR du robot fermée sans fusion → son numéro" {
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 12 CLOSED app/mon-app)]"
+  [ "$status" -eq 0 ]
+  [ "$output" = "12" ]
+  # Auteur sous la forme <slug>[bot] aussi accepté.
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 12 CLOSED 'mon-app[bot]')]"
+  [ "$status" -eq 0 ]
+  [ "$output" = "12" ]
+}
+
+@test "fermee : plusieurs PR fermées du robot → la plus récente" {
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 20 CLOSED app/mon-app), $(pr_json 31 CLOSED app/mon-app), $(pr_json 25 CLOSED app/mon-app)]"
+  [ "$status" -eq 0 ]
+  [ "$output" = "31" ]
+}
+
+@test "fermee : une PR fusionnée → rien" {
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 12 MERGED app/mon-app), $(pr_json 15 CLOSED app/mon-app)]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "fermee : une PR encore ouverte → rien" {
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 12 CLOSED app/mon-app), $(pr_json 15 OPEN alice)]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "fermee : dernière PR fermée d'une personne → rien" {
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 12 CLOSED app/mon-app), $(pr_json 15 CLOSED alice)]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 12 CLOSED app/autre-app)]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "fermee : PR depuis un fork ignorées" {
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 12 CLOSED app/mon-app), $(pr_json 15 OPEN alice true), $(pr_json 16 MERGED alice true)]"
+  [ "$status" -eq 0 ]
+  [ "$output" = "12" ]
+  run "$SCRIPT" fermee mon-app <<<"[$(pr_json 15 CLOSED app/mon-app true)]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "fermee : aucune PR → rien" {
+  run "$SCRIPT" fermee mon-app <<<"[]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "fermee : entrée illisible ou slug absent → erreur" {
+  run --separate-stderr "$SCRIPT" fermee mon-app <<<"pas du JSON"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run --separate-stderr "$SCRIPT" fermee <<<"[]"
+  [ "$status" -eq 2 ]
+}
+
+ROBOT=123+mon-app[bot]@users.noreply.github.com
+
+# Commit sur la branche courante, avec l'auteur donné.
+commit_de() { # <courriel> <message> [<fichier>]
+  echo "$2" >> "${3:-README.md}"
+  git add -A
+  GIT_AUTHOR_EMAIL=$1 git commit -q -m "$2"
+}
+
+@test "auteur : branche du robot seulement → oui" {
+  citer 2026.11.12
+  git switch -q -c chore/image-2026.11.13
+  commit_de "$ROBOT" "chore: image 2026.11.13"
+  commit_de "$ROBOT" "Merge branch 'main'"
+  git switch -q main
+  run "$SCRIPT" auteur main chore/image-2026.11.13 "$ROBOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "oui" ]
+}
+
+@test "auteur : un commit d'une personne sur la branche → non" {
+  citer 2026.11.12
+  git switch -q -c chore/image-2026.11.13
+  commit_de "$ROBOT" "chore: image 2026.11.13"
+  commit_de alice@example.org "fix: à la main"
+  git switch -q main
+  run "$SCRIPT" auteur main chore/image-2026.11.13 "$ROBOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "non" ]
+}
+
+@test "auteur : commits de main (d'une personne) hors de la plage → oui" {
+  citer 2026.11.12
+  git switch -q -c chore/image-2026.11.13
+  commit_de "$ROBOT" "chore: image 2026.11.13"
+  git switch -q main
+  commit_de alice@example.org "fix: sur main" .devcontainer/source/Dockerfile
+  # Ce que fait « gh pr update-branch » : fusion de main par le robot.
+  git switch -q chore/image-2026.11.13
+  GIT_AUTHOR_EMAIL=$ROBOT git merge -q --no-edit main
+  git switch -q main
+  run "$SCRIPT" auteur main chore/image-2026.11.13 "$ROBOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "oui" ]
+}
+
+@test "auteur : rien de propre à la branche → non" {
+  citer 2026.11.12
+  git branch chore/image-2026.11.13
+  run "$SCRIPT" auteur main chore/image-2026.11.13 "$ROBOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "non" ]
+}
+
+@test "auteur : courriel comparé en entier, pas comme motif" {
+  citer 2026.11.12
+  git switch -q -c chore/image-2026.11.13
+  commit_de "x$ROBOT" "chore: image 2026.11.13"
+  git switch -q main
+  run "$SCRIPT" auteur main chore/image-2026.11.13 "$ROBOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "non" ]
+}
+
+@test "auteur : commit introuvable ou courriel absent → erreur" {
+  citer 2026.11.12
+  run --separate-stderr "$SCRIPT" auteur main chore/image-inconnue "$ROBOT"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"chore/image-inconnue"* ]]
+  run --separate-stderr "$SCRIPT" auteur main main ""
+  [ "$status" -eq 2 ]
+}
