@@ -57,6 +57,17 @@ changer_source() {
   [ "$output" = "tag 2026.11.12" ]
 }
 
+@test "decider : version citée sans tag mais pas après le dernier tag → erreur" {
+  citer 2026.11.12
+  git tag devcontainer-2026.11.12
+  citer 2026.11.5
+  run --separate-stderr "$SCRIPT" decider HEAD 2026.11
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"2026.11.5"* ]]
+  [[ "$stderr" == *"devcontainer-2026.11.12"* ]]
+}
+
 @test "decider : source modifiée depuis le dernier tag → pr" {
   citer 2026.11.12
   git tag devcontainer-2026.11.12
@@ -93,6 +104,15 @@ changer_source() {
   run "$SCRIPT" decider HEAD 2026.11
   [ "$status" -eq 0 ]
   [ "$output" = "pr 2026.11.11" ]
+}
+
+@test "decider : N avec un zéro en tête lu en base 10" {
+  citer 2026.11.08
+  git tag devcontainer-2026.11.08
+  changer_source
+  run "$SCRIPT" decider HEAD 2026.11
+  [ "$status" -eq 0 ]
+  [ "$output" = "pr 2026.11.9" ]
 }
 
 @test "decider : tags hors format ignorés" {

@@ -7,7 +7,8 @@
 #       Lit l'état du dépôt (tags devcontainer-*, version citée par les
 #       deux devcontainer.json au commit, changements de
 #       .devcontainer/source) et écrit une seule ligne :
-#         tag <V>      les deux fichiers citent <V>, qui n'a pas de tag ;
+#         tag <V>      les deux fichiers citent <V>, qui n'a pas de tag
+#                      et vient après le dernier tag (sinon sortie 2) ;
 #         pr <V>       .devcontainer/source a changé depuis le dernier
 #                      tag : <V> est la version suivante ;
 #         rien <raison>  sinon.
@@ -81,14 +82,20 @@ decider() {
     fi
     v=${versions[0]}
 
+    local dernier
+    dernier=$(versions_taguees | tail -n 1)
+
     # La version citée n'a pas encore de tag : c'est la PR d'image qui vient d'être fusionnée.
     if ! git rev-parse -q --verify "refs/tags/devcontainer-$v" >/dev/null; then
+        # Jamais une version inférieure ou égale au dernier tag : le robot
+        # suivre-image du modèle prend le plus grand tag et ne la suivrait pas.
+        if [ -n "$dernier" ] && [ "$(printf '%s\n' "$dernier" "$v" | sort -V | tail -n 1)" = "$dernier" ]; then
+            erreur "la version citée $v n'est pas après le dernier tag devcontainer-$dernier."
+        fi
         echo "tag $v"
         return
     fi
 
-    local dernier
-    dernier=$(versions_taguees | tail -n 1)
     local rc=0
     git diff --quiet "devcontainer-$dernier" "$commit" -- "$SOURCE" || rc=$?
     case $rc in
@@ -105,7 +112,8 @@ decider() {
     local n_max
     n_max=$(versions_taguees | { grep -E "^${mois//./\\.}\\." || true; } | tail -n 1)
     if [ -n "$n_max" ]; then
-        echo "pr $mois.$((${n_max##*.} + 1))"
+        # 10# : un N écrit avec un zéro en tête (08) reste lu en base 10.
+        echo "pr $mois.$((10#${n_max##*.} + 1))"
     else
         echo "pr $mois.1"
     fi
