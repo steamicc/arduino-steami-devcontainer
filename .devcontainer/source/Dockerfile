@@ -47,7 +47,7 @@ RUN set -eu; \
 # Drivers : le paquet Arduino « STeaMi » (steamicc/arduino-steami), le même que
 # celui de l'Arduino IDE, au tag fixé par STEAMI_PAQUET (une seule source de
 # vérité : le workflow suivre-paquet.yml lit et met à jour cette ligne).
-ARG STEAMI_PAQUET=v0.46.1
+ARG STEAMI_PAQUET=v0.46.4
 RUN git clone --depth 1 --branch "$STEAMI_PAQUET" \
       https://github.com/steamicc/arduino-steami.git /opt/steami/libs/STeaMi \
     && [ "$(git -C /opt/steami/libs/STeaMi describe --tags)" = "$STEAMI_PAQUET" ] \
