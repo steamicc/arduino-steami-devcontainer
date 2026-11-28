@@ -18,8 +18,9 @@
 #      courant, sinon 1) et le tag est poussé sans --force : un tag
 #      existant fait échouer le push, aucun tag n'est jamais réécrit.
 #
-# Relancer le workflow sur le même commit ne pose pas de second tag :
-# l'image est alors inchangée depuis le tag qu'il vient de poser.
+# Seule la tête actuelle de main est taguée, et jamais un commit déjà
+# contenu dans le dernier tag : relancer un run ne pose donc pas de second
+# tag, ni un numéro plus grand sur un commit plus ancien.
 # Les exécutions sont sérialisées, sans annulation. Si plusieurs pushes
 # attendent, GitHub ne garde que le dernier : il compare au dernier tag,
 # donc il voit aussi les changements des pushes sautés.
@@ -31,8 +32,9 @@
 # Prérequis : les secrets RELEASE_APP_ID et RELEASE_APP_SECRET, et l'App
 # installée sur ce dépôt avec Contents et Workflows en écriture.
 #
-# Réparation à la main : pousser soi-même le tag, ou lancer
-# devcontainer-publish (Actions, « Run workflow ») avec la version.
+# Réparation : tag non posé → relancer tag-image (Actions, « Run
+# workflow » sur main) ; tag posé mais publication ratée → lancer
+# devcontainer-publish (« Run workflow ») avec la version de ce tag.
 #
 # Neutralisé dans les forks, comme les autres workflows.
 # =====================================================================
@@ -85,10 +87,26 @@ jobs:
         id: changement
         run: |
           set -euo pipefail
+          # Seule la tête actuelle de main est taguée. Une relance d'un ancien
+          # run (ou un run dépassé par une fusion plus récente) ne tague rien :
+          # le run de la tête voit aussi ses changements, puisqu'il compare au
+          # dernier tag.
+          tete=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$GITHUB_SHA" != "$tete" ]; then
+            echo "::notice::$GITHUB_SHA n'est plus la tête de main ($tete) : aucun tag posé ici, le run de la tête s'en charge."
+            echo "change=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           derniere=$(git tag --list 'devcontainer-*' | python3 .github/scripts/regles_image.py derniere)
           if [ -z "$derniere" ]; then
             echo "Aucun tag devcontainer-* : première image."
             change=true
+          # Le diff entre deux arbres est symétrique : un commit antérieur au
+          # dernier tag (ou égal) paraîtrait « changé » et recevrait un numéro
+          # plus grand qu'une image plus récente.
+          elif git merge-base --is-ancestor "$GITHUB_SHA" "devcontainer-$derniere"; then
+            echo "::notice::$GITHUB_SHA est déjà contenu dans devcontainer-$derniere : aucun nouveau tag."
+            change=false
           else
             # --no-renames : un renommage compte pour ses deux chemins, l'ancien
             # et le nouveau. core.quotePath=false : chemins non ASCII en clair.
