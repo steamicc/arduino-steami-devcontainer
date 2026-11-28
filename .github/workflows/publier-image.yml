@@ -18,7 +18,9 @@
 #     (squash) : elle est fusionnée dès que devcontainer.yml est au vert,
 #     et le push de la fusion pose le tag. Une seule PR d'image à la
 #     fois : si une PR du robot `chore/image-*` est déjà ouverte, il
-#     vérifie seulement sa fusion automatique ;
+#     vérifie seulement sa fusion automatique. Une PR du robot dont la
+#     version a déjà un tag (publiée à la main entre-temps) est périmée :
+#     elle est signalée par un avertissement, à fermer, et ignorée ;
 #   - rien : aucun changement de l'image (docs, CI, tests).
 # Le robot `suivre-image` du modèle arduino-steami-starter suit ensuite
 # la nouvelle version de lui-même (chaque jour, ou à la demande).
@@ -173,7 +175,7 @@ jobs:
             echo
             echo "Sur le commit $GITHUB_SHA, dont les deux \`devcontainer.json\` citent \`$IMAGE:$VERSION\`."
             echo
-            echo "Le tag déclenche \`devcontainer-publish\`, qui construit, teste et publie l'image : $GITHUB_SERVER_URL/$GH_REPO/actions/workflows/devcontainer-publish.yml"
+            echo "Le tag déclenche \`devcontainer-publish\`, qui construit, teste et publie l'image : $GITHUB_SERVER_URL/$GH_REPO/actions/workflows/devcontainer-publish.yml?query=branch%3A$tag"
             echo
             echo "Une fois l'image publiée, le robot \`suivre-image\` du modèle \`steamicc/arduino-steami-starter\` ouvre sa PR vers cette version."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -187,13 +189,31 @@ jobs:
         run: |
           set -euo pipefail
           branche="chore/image-$VERSION"
+          # Dernier tag au format AAAA.MM.N, comme le script : base de la
+          # liste des changements et repère des PR d'image périmées.
+          dernier=$(git tag -l 'devcontainer-*' | sed 's/^devcontainer-//' \
+                      | { grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]+$' || true; } | sort -V | tail -n 1)
           # Une seule PR d'image à la fois : si une PR du robot (branche
-          # de ce dépôt, ouverte par l'App) est déjà ouverte, sa version
-          # reste valable et la fusionner publiera aussi ce changement ;
-          # on ne vérifie que sa fusion automatique.
-          pr=$(gh pr list --state open --limit 100 --json number,headRefName,author,isCrossRepository \
-                 | jq -r --arg auteur "app/$APP_SLUG" \
-                     '[.[] | select((.isCrossRepository | not) and .author.login == $auteur and (.headRefName | startswith("chore/image-"))) | .number][0] // empty')
+          # de ce dépôt, ouverte par l'App) est déjà ouverte et que sa
+          # version vient après le dernier tag, la fusionner publiera aussi
+          # ce changement ; on ne vérifie que sa fusion automatique.
+          # Une PR dont la version a déjà un tag (publiée à la main entre-
+          # temps) est périmée : on la signale et on ne la retient pas.
+          prs=$(gh pr list --state open --limit 100 --json number,headRefName,author,isCrossRepository \
+                  | jq -r --arg auteur "app/$APP_SLUG" \
+                      '.[] | select((.isCrossRepository | not) and .author.login == $auteur and (.headRefName | startswith("chore/image-"))) | "\(.number) \(.headRefName)"')
+          pr=""
+          while read -r numero tete; do
+            [ -n "$numero" ] || continue
+            v_pr=${tete#chore/image-}
+            if ! printf '%s' "$v_pr" | grep -Eq '^[0-9]{4}\.[0-9]{2}\.[0-9]+$'; then
+              echo "::warning::PR #$numero ($tete) : version « $v_pr » illisible, PR ignorée. La fermer si elle ne sert plus."
+            elif [ -n "$dernier" ] && [ "$(printf '%s\n' "$v_pr" "$dernier" | sort -V | tail -n 1)" = "$dernier" ]; then
+              echo "::warning::PR #$numero ($tete) périmée : $v_pr ne vient pas après devcontainer-$dernier. La fermer."
+            elif [ -z "$pr" ]; then
+              pr=$numero
+            fi
+          done <<< "$prs"
           if [ -n "$pr" ]; then
             echo "La PR d'image #$pr est déjà ouverte : vérification de sa fusion automatique."
             suite=existante
@@ -205,9 +225,6 @@ jobs:
           else
             suite=nouvelle
           fi
-          # Dernier tag au format AAAA.MM.N, comme le script : base de la liste des changements.
-          dernier=$(git tag -l 'devcontainer-*' | sed 's/^devcontainer-//' \
-                      | { grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]+$' || true; } | sort -V | tail -n 1)
           if [ "$suite" = nouvelle ] && [ -z "$dernier" ]; then
             echo "::error::Aucun tag devcontainer-AAAA.MM.N : impossible de lister les changements de l'image."
             exit 1
