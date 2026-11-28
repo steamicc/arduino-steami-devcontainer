@@ -62,6 +62,7 @@ concurrency:
 jobs:
   publish:
     name: build, smoke-test & publish
+    timeout-minutes: 90
     # Ne pas tourner dans les forks.
     if: github.repository == 'steamicc/arduino-steami-devcontainer'
     runs-on: ubuntu-latest

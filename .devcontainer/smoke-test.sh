@@ -73,19 +73,32 @@ steami-compiler lis2mdl/basicreader >"$TMP/cmd.log" 2>&1 \
   || echec "steami-compiler n'a pas écrit .steami/firmware.bin et firmware.json"
 ok "steami-compiler lis2mdl/basicreader (nom réel : LIS2MDL/BasicReader)"
 
-# Tous les exemples du paquet, tels que steami-exemples les liste.
+# Tous les exemples du paquet, tels que steami-exemples les liste. Chaque
+# compilation affiche sa durée, puis les 10 plus lentes (tests/smoke-test.bats
+# extrait ce bloc entre les deux repères : les garder).
+# DEBUT boucle des exemples
 if [ "$EXEMPLES" = tous ]; then
   nb=0
+  : >"$TMP/durees"
   for ex in $(steami-exemples); do
+    debut=$SECONDS
     PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 \
       || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
+    secs=$((SECONDS - debut))
+    printf '%s %ss\n' "$ex" "$secs"
+    printf '%s %s\n' "$secs" "$ex" >>"$TMP/durees"
     nb=$((nb + 1))
   done
   [ "$nb" -ge 50 ] || echec "steami-exemples ne liste que $nb exemples"
+  echo "Les 10 exemples les plus lents :"
+  sort -rn "$TMP/durees" | head -10 | while read -r secs ex; do
+    printf '  %ss %s\n' "$secs" "$ex"
+  done
   ok "$nb exemples compilés"
 else
   ok "boucle des exemples sautée (STEAMI_SMOKE_EXEMPLES=aucun)"
 fi
+# FIN boucle des exemples
 
 # zsh par défaut, historique conservé dans /workspaces (volume persistant d'un
 # Codespace). STEAMI_WORKSPACES remplace /workspaces pour pouvoir le simuler.
