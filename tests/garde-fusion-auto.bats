@@ -128,12 +128,14 @@ jeton_actions() {
 @test "publier-image : pas d'appel de la garde juste après une mise à jour de la branche" {
   run etape publier-image.yml
   grep -qxF '          A_JOUR: ${{ steps.maj.outputs.a_jour }}' <<<"$output"
-  # Le test de A_JOUR, puis exit 0, avant l'appel de la garde.
+  # Le test de A_JOUR, la lecture de la fusion automatique, puis exit 0,
+  # avant l'appel de la garde : on ne saute la garde que si elle est armée.
   run awk -v appel="          $APPEL" '
     $0 == "          if [ \"$A_JOUR\" = oui ]; then" { test = NR }
-    test && !sortie && NR > test && $0 ~ /^            exit 0$/ { sortie = NR }
+    test && !armee && NR > test && /autoMergeRequest != null/ { armee = NR }
+    armee && !sortie && NR > armee && $0 ~ /^ +exit 0$/ { sortie = NR }
     $0 == appel { garde = NR }
-    END { exit !(test && sortie && garde && test < sortie && sortie < garde) }' <<<"$output"
+    END { exit !(test && armee && sortie && garde && test < armee && armee < sortie && sortie < garde) }' <<<"$output"
   [ "$status" -eq 0 ]
 }
 

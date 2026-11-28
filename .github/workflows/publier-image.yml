@@ -49,11 +49,12 @@
 #     `.github/workflows/`). La branche est alors à mettre à jour à la
 #     main (« Update branch »).
 #     Puis il passe la PR à la garde de fusion automatique, sauf juste
-#     après une mise à jour réussie de sa branche dans ce run : la
-#     fusion automatique est normalement déjà activée, la CI vient de
-#     repartir, et l'API peut encore donner l'ancien SHA de tête, dont
-#     le build vient d'être annulé (la garde le relancerait pour rien) ;
-#     le passage suivant du robot vérifie la PR. Une PR du robot dont la
+#     après une mise à jour réussie de sa branche dans ce run si la
+#     fusion automatique est déjà activée : la CI vient de repartir, et
+#     l'API peut encore donner l'ancien SHA de tête, dont le build vient
+#     d'être annulé (la garde le relancerait pour rien) ; le passage
+#     suivant du robot vérifie la PR. Si elle n'est pas activée, la
+#     garde est appelée et l'active sans lire les checks. Une PR du robot dont la
 #     version a déjà un tag (publiée à la main entre-temps) est périmée :
 #     elle est signalée par un avertissement, à fermer, et ignorée ;
 #   - rien : aucun changement de l'image (docs, CI, tests).
@@ -484,10 +485,11 @@ jobs:
       # relance une fois un check exigé rouge, puis fait échouer le run : une
       # PR d'image rouge n'est jamais fusionnée et retient tous les changements
       # suivants de l'image. Pas d'appel juste après une mise à jour de la
-      # branche : la fusion automatique est normalement déjà activée, la CI
-      # vient de repartir, et l'API peut encore donner l'ancien SHA de
-      # tête, dont le build vient d'être annulé (concurrence de
-      # devcontainer.yml) : la garde le relancerait pour rien.
+      # branche si la fusion automatique est déjà activée : la CI vient de
+      # repartir, et l'API peut encore donner l'ancien SHA de tête, dont le
+      # build vient d'être annulé (concurrence de devcontainer.yml) : la
+      # garde le relancerait pour rien. Si elle n'est pas activée, la garde
+      # est appelée : elle l'active sans lire les checks.
       - name: Active la fusion automatique
         if: steps.recherche.outputs.suite != ''
         env:
@@ -498,7 +500,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$A_JOUR" = oui ]; then
-            echo "PR #$PR : branche mise à jour avec main dans ce run, devcontainer.yml vient de repartir ; garde de fusion automatique non appelée (elle relirait peut-être l'ancien SHA de tête, dont le build vient d'être annulé). Le prochain passage du robot la vérifiera."
-            exit 0
+            # Fusion automatique déjà activée : la garde ne ferait que relire les
+            # checks, peut-être ceux de l'ancien SHA. Sinon (ruleset ajouté,
+            # brouillon retiré…), elle doit l'activer, sans lire les checks.
+            armee=$(gh pr view "$PR" --json autoMergeRequest --jq '.autoMergeRequest != null')
+            if [ "$armee" = true ]; then
+              echo "PR #$PR : branche mise à jour avec main dans ce run, devcontainer.yml vient de repartir et la fusion automatique est déjà activée ; garde non appelée (elle relirait peut-être l'ancien SHA de tête, dont le build vient d'être annulé). Le prochain passage du robot la vérifiera."
+              exit 0
+            fi
           fi
           bash .github/scripts/garde-fusion-auto.sh "$GITHUB_REPOSITORY" "$PR" "$APP_SLUG" "tests des commandes" "build & smoke-test"
