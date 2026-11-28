@@ -15,13 +15,20 @@ trap 'rm -rf "$TMP"' EXIT
 echec() { echo "✗ $*" >&2; exit 1; }
 ok() { echo "✅ $*"; }
 
-# Boucle sur tous les exemples du paquet : `tous` (par défaut) ou `aucun`.
+# Boucle des exemples du paquet :
+#   - `representatif` (par défaut) : le premier exemple de chaque composant
+#     (dossier de examples/), plus un exemple BLE s'il n'y en a pas déjà un. La
+#     publication du paquet (steamicc/arduino-steami-lib) compile déjà tous ses
+#     exemples avec le même core : ici, il suffit de prouver que la chaîne hors
+#     ligne de l'image marche et trouve chaque bibliothèque ;
+#   - `tous` : chaque exemple listé par steami-exemples (vérification à la main) ;
+#   - `aucun` : boucle sautée.
 # La CI des PR ne la lance qu'une fois par run (devcontainer.yml) ; la
 # publication la lance toujours (devcontainer-publish.yml).
-EXEMPLES=${STEAMI_SMOKE_EXEMPLES:-tous}
+EXEMPLES=${STEAMI_SMOKE_EXEMPLES:-representatif}
 case "$EXEMPLES" in
-  tous | aucun) ;;
-  *) echec "STEAMI_SMOKE_EXEMPLES vaut tous ou aucun (obtenu : « $EXEMPLES »)" ;;
+  representatif | tous | aucun) ;;
+  *) echec "STEAMI_SMOKE_EXEMPLES vaut representatif, tous ou aucun (obtenu : « $EXEMPLES »)" ;;
 esac
 
 command -v pio >/dev/null 2>&1 || echec "pio est introuvable"
@@ -73,23 +80,74 @@ steami-compiler lis2mdl/basicreader >"$TMP/cmd.log" 2>&1 \
   || echec "steami-compiler n'a pas écrit .steami/firmware.bin et firmware.json"
 ok "steami-compiler lis2mdl/basicreader (nom réel : LIS2MDL/BasicReader)"
 
-# Tous les exemples du paquet, tels que steami-exemples les liste. Chaque
-# compilation affiche sa durée, puis les 10 plus lentes (tests/smoke-test.bats
-# extrait ce bloc entre les deux repères : les garder).
+# Les exemples choisis (voir STEAMI_SMOKE_EXEMPLES), tels que steami-exemples
+# les liste, compilés en parallèle (un par cœur), chacun dans son propre dossier
+# de travail PlatformIO (PLATFORMIO_WORKSPACE_DIR : .pio/build, libdeps) pour
+# que les compilations ne se marchent pas dessus. La sortie de chaque
+# compilation va dans son journal ; celui d'un exemple en échec est affiché en
+# bloc à la fin. Chaque compilation affiche sa durée, puis les 10 plus lentes
+# (tests/smoke-test.bats extrait ce bloc entre les deux repères : les garder).
 # DEBUT boucle des exemples
-if [ "$EXEMPLES" = tous ]; then
-  nb=0
+# Une ligne par exemple : le premier de chaque composant, plus le premier
+# exemple BLE (qui inclut STM32duinoBLE.h, installée à part dans l'image) si
+# aucun de ceux-là n'en est un. Ordre de steami-exemples : déterministe.
+selection_representative() {
+  local ex ble=""
+  awk -F/ '!vu[$1]++' "$1" >"$TMP/selection"
+  while read -r ex; do
+    if grep -rqsE '#include[[:space:]]*[<"]STM32duinoBLE\.h' "$LIB/examples/$ex"; then
+      ble=$ex
+      break
+    fi
+  done < <(cat "$TMP/selection" "$1")
+  [ -n "$ble" ] \
+    || echec "aucun exemple n'inclut STM32duinoBLE.h : l'image installe STM32duinoBLE pour les exemples BLE (voir le Dockerfile)"
+  grep -qxF "$ble" "$TMP/selection" || echo "$ble" >>"$TMP/selection"
+  LC_ALL=C sort -o "$TMP/selection" "$TMP/selection"
+}
+
+# Compile l'exemple $2 (numéro $1) ; écrit « durée statut » dans $TMP/ex/$1.res.
+compiler_exemple() {
+  local debut=$SECONDS statut=0
+  PLATFORMIO_WORKSPACE_DIR="$TMP/pio/$1" PLATFORMIO_SRC_DIR="$LIB/examples/$2" \
+    pio run -e steami >"$TMP/ex/$1.log" 2>&1 || statut=$?
+  printf '%s %s\n' "$((SECONDS - debut))" "$statut" >"$TMP/ex/$1.res"
+  [ "$statut" -ne 0 ] || printf '%s %ss\n' "$2" "$((SECONDS - debut))"
+}
+
+if [ "$EXEMPLES" != aucun ]; then
+  steami-exemples >"$TMP/liste" || echec "steami-exemples a échoué"
+  total=$(grep -c . "$TMP/liste")
+  [ "$total" -ge 50 ] || echec "steami-exemples ne liste que $total exemples"
+  if [ "$EXEMPLES" = tous ]; then
+    cp "$TMP/liste" "$TMP/selection"
+  else
+    selection_representative "$TMP/liste"
+  fi
+  nb=$(grep -c . "$TMP/selection")
+  PARALLELE=${PARALLELE:-$(nproc 2>/dev/null || echo 2)}
+  echo "Exemples ($EXEMPLES) : $nb exemples sur $total, $PARALLELE en parallèle"
+  echo "Exemples compilés : $(paste -sd' ' "$TMP/selection")"
+  mkdir -p "$TMP/ex" "$TMP/pio"
+  export TMP LIB
+  export -f compiler_exemple
+  # Le numéro de ligne sert de nom aux journaux et aux dossiers de travail.
+  awk '{ print NR, $0 }' "$TMP/selection" \
+    | xargs -P "$PARALLELE" -n 2 bash -c 'compiler_exemple "$@"' _
   : >"$TMP/durees"
-  for ex in $(steami-exemples); do
-    debut=$SECONDS
-    PLATFORMIO_SRC_DIR="$LIB/examples/$ex" pio run -e steami >"$TMP/ex.log" 2>&1 \
-      || { tail -30 "$TMP/ex.log" >&2; echec "compilation de $ex"; }
-    secs=$((SECONDS - debut))
-    printf '%s %ss\n' "$ex" "$secs"
+  echecs=0
+  i=0
+  while read -r ex; do
+    i=$((i + 1))
+    read -r secs statut 2>/dev/null <"$TMP/ex/$i.res" || { secs=0; statut=absent; }
+    if [ "$statut" != 0 ]; then
+      { echo "--- $ex : fin du journal de compilation ---"; tail -30 "$TMP/ex/$i.log" 2>/dev/null
+        echo "✗ compilation de $ex"; } >&2
+      echecs=$((echecs + 1))
+    fi
     printf '%s %s\n' "$secs" "$ex" >>"$TMP/durees"
-    nb=$((nb + 1))
-  done
-  [ "$nb" -ge 50 ] || echec "steami-exemples ne liste que $nb exemples"
+  done <"$TMP/selection"
+  [ "$echecs" -eq 0 ] || echec "$echecs exemple(s) sur $nb ne compilent pas (journaux ci-dessus)"
   echo "Les 10 exemples les plus lents :"
   sort -rn "$TMP/durees" | head -10 | while read -r secs ex; do
     printf '  %ss %s\n' "$secs" "$ex"
